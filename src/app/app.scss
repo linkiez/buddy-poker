@@ -1,0 +1,27 @@
+
+.app-shell {
+	min-height: 100vh;
+	display: flex;
+	flex-direction: column;
+}
+
+.app-header {
+	padding: 1rem 1.25rem;
+	border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+}
+
+.app-title {
+	font-size: 1.25rem;
+	font-weight: 700;
+}
+
+.app-subtitle {
+	margin-top: 0.25rem;
+	font-size: 0.95rem;
+	opacity: 0.8;
+}
+
+.app-main {
+	flex: 1;
+	padding: 1.25rem;
+}

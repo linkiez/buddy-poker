@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="BuddyPoker">
+  <title>BuddyPoker</title>
+  <rect width="128" height="128" rx="28" fill="#000" opacity="0" />
+
+  <circle cx="64" cy="64" r="52" fill="none" stroke="currentColor" stroke-width="10" />
+  <circle cx="64" cy="64" r="30" fill="none" stroke="currentColor" stroke-width="8" />
+
+  <path d="M64 16v14" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+  <path d="M64 98v14" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+  <path d="M16 64h14" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+  <path d="M98 64h14" fill="none" stroke="currentColor" stroke-width="10" stroke-linecap="round" />
+
+  <path d="M40 44c5-10 22-10 27 0c5 10-8 18-13 26c-5-8-18-16-14-26z" fill="none" stroke="currentColor" stroke-width="6" stroke-linejoin="round" />
+</svg>

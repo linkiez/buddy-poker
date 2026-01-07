@@ -1,0 +1,62 @@
+/* You can add global styles to this file, and also import other style files */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import 'primeicons/primeicons.css';
+
+html,
+body {
+	height: 100%;
+}
+
+body {
+	background-color: var(--surface-ground);
+}
+
+body::before {
+	content: '';
+	position: fixed;
+	inset: 0;
+	pointer-events: none;
+	z-index: -1;
+
+	background-image: url('/svgs/cards-mask.svg');
+	background-repeat: repeat;
+	background-size: 420px 420px;
+	background-position: 0 0;
+	opacity: 0.08;
+}
+
+@supports (color: color-mix(in srgb, black, white)) {
+	body {
+		background-image:
+			radial-gradient(
+				circle at 15% 10%,
+				color-mix(in srgb, var(--surface-card) 22%, var(--surface-ground) 78%),
+				transparent 55%
+			),
+			radial-gradient(
+				circle at 85% 25%,
+				color-mix(in srgb, var(--surface-card) 18%, var(--surface-ground) 82%),
+				transparent 50%
+			),
+			radial-gradient(
+				circle at 50% 45%,
+				color-mix(in srgb, var(--surface-ground) 82%, var(--text-color) 18%),
+				transparent 62%
+			),
+			repeating-radial-gradient(
+				circle at 0 0,
+				color-mix(in srgb, var(--surface-ground) 94%, var(--text-color) 6%) 0 1px,
+				transparent 1px 7px
+			),
+			repeating-linear-gradient(
+				45deg,
+				color-mix(in srgb, var(--surface-ground) 92%, var(--text-color) 8%) 0 2px,
+				var(--surface-ground) 2px 12px
+			);
+		background-attachment: fixed;
+	}
+}

@@ -1,0 +1,34 @@
+<section class="home" [@pageEnter]>
+  <h1>
+    <img class="hero-icon" src="/svgs/playing-cards.svg" alt="Cartas de baralho" />
+    Poker do Scrum (versão totalmente séria)
+  </h1>
+  <p class="subtitle">A regra é clara: estimou, sustentou.</p>
+
+  <p-card>
+    <div class="form">
+      <label class="field">
+        <span>Seu nome</span>
+        <input pInputText [(ngModel)]="name" placeholder="Ex.: Dev Ninja" />
+      </label>
+
+      <label class="field">
+        <span>ID da sala</span>
+        <input pInputText [(ngModel)]="roomId" placeholder="Ex.: scrumzada-abc123" />
+      </label>
+
+      <div class="actions">
+        <p-button label="Entrar na sala" icon="pi pi-sign-in" (onClick)="joinRoom()" />
+        <p-button
+          label="Criar uma sala aleatória"
+          icon="pi pi-bolt"
+          severity="secondary"
+          variant="outlined"
+          (onClick)="createRoom()"
+        />
+      </div>
+
+      <p-message *ngIf="errorMessage() as msg" severity="error" [text]="msg" />
+    </div>
+  </p-card>
+</section>

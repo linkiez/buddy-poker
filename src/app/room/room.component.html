@@ -1,0 +1,108 @@
+<section class="room" [@pageEnter]>
+  <div class="room-header">
+    <div>
+      <h1>
+        <img class="hero-icon" src="/svgs/poker-chip.svg" alt="Ficha de poker" />
+        Sala: {{ roomId }}
+      </h1>
+      <p class="subtitle">
+        Participantes: {{ participantsCount() }}
+        <span *ngIf="isJoined()">·</span>
+        <p-tag
+          *ngIf="isJoined()"
+          [value]="connectionLabel()"
+          [severity]="connectionSeverity()"
+          [rounded]="true"
+        />
+        <span *ngIf="state()?.reveal">· votos revelados</span>
+        <span *ngIf="!state()?.reveal">· cartas na mesa (viradas pra baixo)</span>
+        <span *ngIf="isJoined() && isOwner()">· você é o moderador 😎</span>
+      </p>
+    </div>
+
+    <div class="room-actions" *ngIf="isJoined()">
+      <p-button
+        label="Copiar link"
+        icon="pi pi-copy"
+        severity="secondary"
+        variant="outlined"
+        (onClick)="copyRoomLink()"
+      />
+
+      <p-button label="Revelar" icon="pi pi-eye" *ngIf="isOwner()" (onClick)="reveal()" />
+      <p-button
+        label="Resetar"
+        icon="pi pi-refresh"
+        severity="secondary"
+        variant="outlined"
+        *ngIf="isOwner()"
+        (onClick)="reset()"
+      />
+    </div>
+  </div>
+
+  <p-message
+    *ngIf="isJoined() && !isOwner()"
+    class="room-message"
+    severity="info"
+    text="Modo participante: só o moderador revela/reset."
+  />
+
+  <div class="room-message-row" *ngIf="errorMessage() as msg">
+    <p-message severity="error" [text]="msg" />
+    <p-button label="Entendi" text severity="secondary" (onClick)="dismissError()" />
+  </div>
+
+  <div class="room-message-row" *ngIf="copyMessage() as msg">
+    <p-message severity="success" [text]="msg" />
+    <p-button label="Fechar" text severity="secondary" (onClick)="dismissCopyMessage()" />
+  </div>
+
+  <p-card class="join" *ngIf="!isJoined()" header="Entrar">
+    <div class="join-content">
+      <label class="field">
+        <span>Seu nome</span>
+        <input pInputText [(ngModel)]="name" placeholder="Ex.: QA do Caos" />
+      </label>
+      <p-button label="Entrar" icon="pi pi-sign-in" (onClick)="join()" />
+    </div>
+  </p-card>
+
+  <div class="grid">
+    <p-card header="Jogadores" [@revealAnim]="state()?.reveal ? 'revealed' : 'hidden'">
+      <ul class="participants" [@listAnim]="participantsCount()">
+        <li *ngFor="let p of state()?.participants ?? []">
+          <span class="p-name">
+            {{ p.name }}
+            <p-tag *ngIf="p.id === state()?.ownerId" value="moderador" severity="info" [rounded]="true" />
+          </span>
+          <span class="vote-flip" [class.revealed]="!!state()?.reveal">
+            <span class="vote-flip-inner">
+              <span class="vote-face vote-back" aria-hidden="true">{{ p.hasVoted ? '🎴' : '…' }}</span>
+              <span class="vote-face vote-front">{{ p.vote ?? '—' }}</span>
+            </span>
+          </span>
+        </li>
+      </ul>
+    </p-card>
+
+    <p-card header="Seu voto" *ngIf="isJoined()">
+      <p class="subtitle">Escolha com responsabilidade emocional.</p>
+
+      <div class="votes">
+        <span
+          *ngFor="let v of voteOptions"
+          class="vote-btn"
+          [@votePick]="selectedVote() === v ? votePickTick() : 0"
+        >
+          <p-button
+            [label]="v"
+            size="small"
+            [styleClass]="selectedVote() === v ? 'vote-selected' : ''"
+            (onClick)="vote(v)"
+          />
+        </span>
+      </div>
+    </p-card>
+  </div>
+</section>

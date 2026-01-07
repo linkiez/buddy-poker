@@ -1,0 +1,17 @@
+services:
+  buddy-poker:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      REDIS_URL: redis://redis:6379
+      ROOM_TTL_SECONDS: 86400
+      REDIS_KEY_PREFIX: "buddy-poker:room:"
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--save", "", "--appendonly", "no"]

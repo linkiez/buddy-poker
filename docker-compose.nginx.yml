@@ -1,0 +1,17 @@
+services:
+  buddy-poker:
+    build: .
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+    expose:
+      - "4000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on:
+      - buddy-poker
+    ports:
+      - "8080:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro

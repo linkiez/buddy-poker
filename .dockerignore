@@ -1,0 +1,22 @@
+# Dependencies (Yarn PnP typically doesn't create node_modules, but ignore anyway)
+node_modules
+
+# Build output
+/dist
+
+# Angular cache
+/.angular
+
+# Editor/OS
+.vscode
+.DS_Store
+
+# Logs
+*.log
+
+# Tests/coverage
+coverage
+
+# Optional local env files
+.env
+.env.*

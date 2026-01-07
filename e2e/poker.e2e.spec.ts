@@ -1,0 +1,143 @@
+import { expect, test, type Page } from '@playwright/test';
+
+function extractRoomIdFromUrl(url: string): string {
+  const parsed = new URL(url);
+  const match = parsed.pathname.match(/^\/room\/(.+)$/);
+  if (!match?.[1]) {
+    throw new Error(`Unexpected room URL: ${url}`);
+  }
+  return match[1];
+}
+
+async function ensureJoinedFromJoinCard(page: Page, name: string) {
+  const joinCard = page.locator('.join');
+  const joinNameInput = joinCard.getByLabel('Seu nome');
+  const joinButton = joinCard.getByRole('button', { name: 'Entrar' });
+
+  if ((await joinCard.count()) === 0) {
+    return;
+  }
+
+  if (!(await joinButton.isVisible())) {
+    return;
+  }
+
+  const currentName = await joinNameInput.inputValue();
+  if (!currentName) {
+    await joinNameInput.fill(name);
+  }
+
+  await joinButton.click();
+}
+
+test('can open a room without name and join via form', async ({ page }) => {
+  await page.goto('/room/e2e-join-with-form');
+
+  await expect(page.getByRole('heading', { name: /Sala: e2e-join-with-form/ })).toBeVisible();
+  await expect(page.getByLabel('Seu nome')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Entrar' })).toBeVisible();
+
+  await page.getByLabel('Seu nome').fill('Carol');
+  await page.getByRole('button', { name: 'Entrar' }).click();
+
+  await expect(page.getByText('Participantes: 1')).toBeVisible({ timeout: 15_000 });
+});
+
+test('moderator can run a round with two participants (WS + SSR)', async ({ browser }) => {
+  const aliceContext = await browser.newContext({
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+  const alicePage = await aliceContext.newPage();
+
+  await alicePage.goto('/');
+  await alicePage.getByLabel('Seu nome').fill('Alice');
+  await alicePage.getByRole('button', { name: 'Criar uma sala aleatória' }).click();
+  await expect(alicePage).toHaveURL(/\/room\//);
+
+  const roomOrigin = new URL(alicePage.url()).origin;
+  const roomId = extractRoomIdFromUrl(alicePage.url());
+
+  let roomToken: string | null = null;
+  await expect
+    .poll(() => {
+      roomToken = new URL(alicePage.url()).searchParams.get('token');
+      return roomToken;
+    }, { timeout: 15_000 })
+    .toBeTruthy();
+
+  const bobContext = await browser.newContext({
+    permissions: ['clipboard-read', 'clipboard-write'],
+  });
+  const bobPage = await bobContext.newPage();
+
+  const bobParams = new URLSearchParams();
+  bobParams.set('name', 'Bob');
+  bobParams.set('token', roomToken ?? '');
+
+  await bobPage.goto(`${roomOrigin}/room/${roomId}?${bobParams.toString()}`);
+
+  await ensureJoinedFromJoinCard(bobPage, 'Bob');
+
+  await expect(bobPage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
+  await expect(alicePage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
+
+  await expect(bobPage.getByRole('button', { name: 'Revelar' })).toHaveCount(0);
+  await expect(bobPage.getByRole('button', { name: 'Resetar' })).toHaveCount(0);
+  await expect(bobPage.getByText(/Modo participante/)).toBeVisible();
+
+  await alicePage.getByRole('button', { name: 'Copiar link' }).click();
+  await expect(alicePage.getByText(/copiado/i)).toBeVisible();
+
+  const clipboardText = await alicePage.evaluate(async () => navigator.clipboard.readText());
+  expect(clipboardText).toContain(`/room/${roomId}`);
+
+  await alicePage.getByRole('button', { name: '5' }).click();
+  await bobPage.getByRole('button', { name: '8' }).click();
+
+  await alicePage.getByRole('button', { name: 'Revelar' }).click();
+  await expect(alicePage.getByText('votos revelados')).toBeVisible();
+
+  const aliceRow = alicePage.locator('li', { hasText: 'Alice' });
+  await expect(aliceRow.locator('.vote-front')).toHaveText('5');
+
+  const bobRow = alicePage.locator('li', { hasText: 'Bob' });
+  await expect(bobRow.locator('.vote-front')).toHaveText('8');
+
+  await alicePage.getByRole('button', { name: 'Resetar' }).click();
+  await expect(alicePage.getByText('cartas na mesa')).toBeVisible();
+
+  await bobContext.close();
+  await aliceContext.close();
+});
+
+test('joining an existing room without token is rejected (from 2nd participant on)', async ({ browser }) => {
+  const aliceContext = await browser.newContext();
+  const alicePage = await aliceContext.newPage();
+
+  await alicePage.goto('/');
+  await alicePage.getByLabel('Seu nome').fill('Alice');
+  await alicePage.getByRole('button', { name: 'Criar uma sala aleatória' }).click();
+  await expect(alicePage).toHaveURL(/\/room\//);
+
+  const roomOrigin = new URL(alicePage.url()).origin;
+  const roomId = extractRoomIdFromUrl(alicePage.url());
+
+  let token: string | null = null;
+  await expect
+    .poll(() => {
+      token = new URL(alicePage.url()).searchParams.get('token');
+      return token;
+    }, { timeout: 15_000 })
+    .toBeTruthy();
+
+  const eveContext = await browser.newContext();
+  const evePage = await eveContext.newPage();
+  await evePage.goto(`${roomOrigin}/room/${roomId}?name=Eve`);
+
+  await expect(evePage.getByText('Token da sala inválido. Peça o link correto para o moderador.')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await eveContext.close();
+  await aliceContext.close();
+});
