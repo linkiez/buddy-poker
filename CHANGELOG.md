@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/linkiez/buddy-poker/compare/v1.0.1...v1.0.2) (2026-01-08)
+
+
+### Bug Fixes
+
+* **ci:** corrigir publishCmd do docker no release ([2011b46](https://github.com/linkiez/buddy-poker/commit/2011b46eba7a5fc1feadf85cf0888811b1e275c9))
+
 ## [1.0.1](https://github.com/linkiez/buddy-poker/compare/v1.0.0...v1.0.1) (2026-01-08)
 
 
