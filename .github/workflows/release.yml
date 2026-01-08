@@ -19,6 +19,9 @@ jobs:
   release:
     if: ${{ !contains(github.event.head_commit.message, 'chore(release):') }}
     runs-on: ubuntu-latest
+    env:
+      YARN_ENABLE_GLOBAL_CACHE: "false"
+      YARN_CACHE_FOLDER: .yarn/cache
 
     steps:
       - name: Checkout
