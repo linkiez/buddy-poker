@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/linkiez/buddy-poker/compare/v1.0.3...v1.1.0) (2026-01-08)
+
+
+### Features
+
+* **redis:** suportar senha via env ([a8d6dd8](https://github.com/linkiez/buddy-poker/commit/a8d6dd8df2692bea5159cd125a6958e8ce8e006e))
+
 ## [1.0.3](https://github.com/linkiez/buddy-poker/compare/v1.0.2...v1.0.3) (2026-01-08)
 
 
