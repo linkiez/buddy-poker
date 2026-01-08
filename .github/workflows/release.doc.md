@@ -66,7 +66,6 @@ GITHUB_TOKEN=... corepack yarn release
 - GitHub Actions:
   - `actions/checkout@v4`
   - `actions/setup-node@v4`
-  - `actions/cache@v4`
   - `docker/setup-buildx-action@v3`
   - `docker/login-action@v3`
 - Yarn Berry (Corepack) + Plug'n'Play.
