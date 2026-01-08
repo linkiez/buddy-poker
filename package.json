@@ -15,7 +15,8 @@
     "test:coverage:check": "yarn test:coverage && node scripts/check-coverage.mjs",
     "e2e": "playwright test",
     "e2e:install": "playwright install chromium",
-    "serve:ssr:buddy-poker": "node dist/buddy-poker/server/server.mjs"
+    "serve:ssr:buddy-poker": "node dist/buddy-poker/server/server.mjs",
+    "release": "semantic-release"
   },
   "prettier": {
     "printWidth": 100,
@@ -56,6 +57,13 @@
     "@angular/cli": "^21.0.4",
     "@angular/compiler-cli": "^21.0.0",
     "@playwright/test": "^1.57.0",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/commit-analyzer": "^13.0.1",
+    "@semantic-release/exec": "^7.0.3",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/github": "^11.0.2",
+    "@semantic-release/npm": "^12.0.2",
+    "@semantic-release/release-notes-generator": "^14.1.0",
     "@types/express": "^5.0.1",
     "@types/node": "^20.17.19",
     "@types/ws": "^8.18.1",
@@ -68,6 +76,47 @@
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.2",
     "vitest": "^4.0.8",
-    "wait-on": "^8.0.5"
+    "wait-on": "^8.0.5",
+    "semantic-release": "^24.2.1"
+  }
+,
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      [
+        "@semantic-release/changelog",
+        {
+          "changelogFile": "CHANGELOG.md"
+        }
+      ],
+      [
+        "@semantic-release/npm",
+        {
+          "npmPublish": false
+        }
+      ],
+      [
+        "@semantic-release/git",
+        {
+          "assets": [
+            "CHANGELOG.md",
+            "package.json",
+            "yarn.lock"
+          ],
+          "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
+        }
+      ],
+      "@semantic-release/github",
+      [
+        "@semantic-release/exec",
+        {
+          "publishCmd": "docker buildx build --tag ghcr.io/${GITHUB_REPOSITORY}:${nextRelease.version} --tag ghcr.io/${GITHUB_REPOSITORY}:latest --push ."
+        }
+      ]
+    ]
   }
 }
