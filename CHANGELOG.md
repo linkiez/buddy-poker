@@ -1,3 +1,10 @@
+## [1.0.3](https://github.com/linkiez/buddy-poker/compare/v1.0.2...v1.0.3) (2026-01-08)
+
+
+### Bug Fixes
+
+* **docker:** corrigir build com yarn 4 ([4ce9b8c](https://github.com/linkiez/buddy-poker/commit/4ce9b8cd91303fb1a9b9ff0ad9a3e98818528350))
+
 ## [1.0.2](https://github.com/linkiez/buddy-poker/compare/v1.0.1...v1.0.2) (2026-01-08)
 
 
