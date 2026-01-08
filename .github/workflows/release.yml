@@ -51,11 +51,9 @@ jobs:
             .pnp.cjs
             .pnp.loader.mjs
           key: yarn-${{ runner.os }}-${{ hashFiles('yarn.lock') }}
-          restore-keys: |
-            yarn-${{ runner.os }}-
 
       - name: Install dependencies
-        run: corepack yarn install --immutable
+        run: corepack yarn install --immutable --check-cache
 
       - name: Unit tests
         run: corepack yarn test
