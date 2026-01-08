@@ -4,18 +4,29 @@ node_modules
 # Build output
 /dist
 
+# Tests/coverage
+/test-results
+/coverage
+
 # Angular cache
 /.angular
+/.angular/cache
+
+# Yarn (Berry) cache/state
+/.yarn/cache
+/.yarn/unplugged
+/.yarn/build-state.yml
+/.yarn/install-state.gz
+/.yarn/sdks
+/.yarn/versions
 
 # Editor/OS
 .vscode
+.git
 .DS_Store
 
 # Logs
 *.log
-
-# Tests/coverage
-coverage
 
 # Optional local env files
 .env

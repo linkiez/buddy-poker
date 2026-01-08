@@ -32,7 +32,7 @@ flowchart TD
 ## Tratamento de erros e casos-limite
 
 - `PORT` inválido: o servidor lança `TypeError` e não inicia.
-- Dependências Yarn PnP: o comando de runtime deve ser executado via `yarn` para garantir o hook PnP.
+- A imagem executa o runtime com `node dist/buddy-poker/server/server.mjs` (não depende de Yarn no runtime).
 
 ## Exemplos
 

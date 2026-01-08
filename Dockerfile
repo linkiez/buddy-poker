@@ -4,9 +4,9 @@ FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
 # Enable Corepack so Yarn version from packageManager field is used
-RUN corepack enable
+RUN corepack enable && corepack prepare yarn@4.12.0 --activate
 
-COPY package.json yarn.lock ./
+COPY package.json yarn.lock .yarnrc.yml ./
 RUN yarn install --immutable
 
 COPY . .
@@ -19,13 +19,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-RUN corepack enable
-
-COPY package.json yarn.lock ./
-RUN yarn install --immutable --production
-
+COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 
 EXPOSE 4000
 
-CMD ["yarn", "serve:ssr:buddy-poker"]
+CMD ["node", "dist/buddy-poker/server/server.mjs"]
