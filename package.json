@@ -73,13 +73,12 @@
     "jsdom": "^27.1.0",
     "nodemon": "^3.1.10",
     "postcss": "^8.5.6",
+    "semantic-release": "^24.2.1",
     "tailwindcss": "^3.4.17",
     "typescript": "~5.9.2",
     "vitest": "^4.0.8",
-    "wait-on": "^8.0.5",
-    "semantic-release": "^24.2.1"
-  }
-,
+    "wait-on": "^8.0.5"
+  },
   "release": {
     "branches": [
       "main"
