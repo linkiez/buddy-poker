@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/linkiez/buddy-poker/compare/v1.0.0...v1.0.1) (2026-01-08)
+
+
+### Bug Fixes
+
+* **ci:** corrigir env do GHCR no semantic-release ([fa8b435](https://github.com/linkiez/buddy-poker/commit/fa8b435ecc8d47b3c4e291e351a01009e22bbbd4))
+
 # 1.0.0 (2026-01-08)
 
 
