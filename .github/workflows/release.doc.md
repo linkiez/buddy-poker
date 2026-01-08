@@ -68,6 +68,6 @@ GITHUB_TOKEN=... corepack yarn release
   - `actions/setup-node@v4`
   - `docker/setup-buildx-action@v3`
   - `docker/login-action@v3`
-- Yarn Berry (Corepack) + Plug'n'Play.
+- Yarn Berry (Corepack) + `nodeLinker: node-modules`.
 - `semantic-release` e plugins configurados em `package.json`.
 - GHCR (registry `ghcr.io`).
