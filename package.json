@@ -113,7 +113,7 @@
       [
         "@semantic-release/exec",
         {
-          "publishCmd": "docker buildx build --tag ghcr.io/${GITHUB_REPOSITORY}:${nextRelease.version} --tag ghcr.io/${GITHUB_REPOSITORY}:latest --push ."
+          "publishCmd": "docker buildx build --tag ghcr.io/${env.GITHUB_REPOSITORY}:${nextRelease.version} --tag ghcr.io/${env.GITHUB_REPOSITORY}:latest --push ."
         }
       ]
     ]
