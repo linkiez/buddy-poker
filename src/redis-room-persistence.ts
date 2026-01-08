@@ -78,6 +78,7 @@ export function createRedisRoomPersistenceFromClient(input: {
 
 export function createLazyRedisClientRoomPersistence(input: {
   redisUrl: string;
+  redisPassword?: string;
   keyPrefix: string;
   defaultTtlSeconds: number;
 }): RoomPersistence {
@@ -86,7 +87,11 @@ export function createLazyRedisClientRoomPersistence(input: {
   async function getClient(): Promise<RedisClientLike> {
     clientPromise ??= (async () => {
       const { createClient } = await import('redis');
-      const client = createClient({ url: input.redisUrl });
+
+      const redisPassword = input.redisPassword?.trim();
+      const client = redisPassword
+        ? createClient({ url: input.redisUrl, password: redisPassword })
+        : createClient({ url: input.redisUrl });
       await client.connect();
       return client as unknown as RedisClientLike;
     })();

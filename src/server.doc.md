@@ -58,6 +58,7 @@ sequenceDiagram
 - O estado de participantes é em memória: reiniciar o processo derruba conexões e limpa participantes.
 - Persistência opcional (Redis):
   - Se `REDIS_URL` estiver definido, o servidor persiste `token` e `rounds` por sala.
+  - `REDIS_PASSWORD` (opcional) para autenticação quando a senha não estiver embutida no `REDIS_URL`.
   - TTL padrão via `ROOM_TTL_SECONDS` (default: `86400`).
   - Prefixo de chave via `REDIS_KEY_PREFIX` (default: `buddy-poker:room:`).
   - Isso não resolve sincronização de sockets entre instâncias; para multi-instância real, use sticky sessions e/ou pub/sub.

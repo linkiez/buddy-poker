@@ -73,6 +73,7 @@ docker compose -f docker-compose.redis.yml up --build
 Variáveis de ambiente relevantes:
 
 - `REDIS_URL`: URL de conexão (ex.: `redis://redis:6379`).
+- `REDIS_PASSWORD` (opcional): senha do Redis, quando aplicável.
 - `ROOM_TTL_SECONDS`: TTL padrão das chaves da sala (default: `86400`).
 - `REDIS_KEY_PREFIX`: prefixo da chave (default: `buddy-poker:room:`).
 

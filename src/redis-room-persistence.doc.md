@@ -21,6 +21,8 @@ A lista de participantes e sockets continua sendo **estado em memória**, pois d
 
 - Entradas:
   - `redisUrl` (ex.: `redis://localhost:6379`)
+  - `redisPassword` (opcional, ex.: `mySecret`)\
+    Usado para autenticar quando a senha não estiver embutida no `redisUrl`.
   - `keyPrefix` (default no servidor: `buddy-poker:room:`)
   - `defaultTtlSeconds` (default no servidor: `86400`)
 - Saídas:
@@ -50,6 +52,7 @@ import { createLazyRedisClientRoomPersistence } from './redis-room-persistence';
 
 const persistence = createLazyRedisClientRoomPersistence({
   redisUrl: 'redis://localhost:6379',
+  redisPassword: 'mySecret',
   keyPrefix: 'buddy-poker:room:',
   defaultTtlSeconds: 86400,
 });

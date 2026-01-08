@@ -324,4 +324,21 @@ describe('createLazyRedisClientRoomPersistence', () => {
     expect(redisMocks.client.set).toHaveBeenCalledTimes(1);
     expect(redisMocks.client.del).toHaveBeenCalledTimes(1);
   });
+
+  it('should pass password to redis client when provided', async () => {
+    redisMocks.client.get.mockResolvedValueOnce(JSON.stringify({ token: 't', rounds: [] }));
+
+    const persistence = createLazyRedisClientRoomPersistence({
+      redisUrl: 'redis://localhost:6379',
+      redisPassword: 'secret',
+      keyPrefix: 'buddy:room:',
+      defaultTtlSeconds: 60,
+    });
+
+    await expect(persistence.get('abc')).resolves.toEqual({ token: 't', rounds: [] });
+
+    expect(redisMocks.createClient).toHaveBeenCalledWith(
+      expect.objectContaining({ url: 'redis://localhost:6379', password: 'secret' }),
+    );
+  });
 });

@@ -1,8 +1,8 @@
 import {
-  AngularNodeAppEngine,
-  createNodeRequestHandler,
-  isMainModule,
-  writeResponseToNodeResponse,
+    AngularNodeAppEngine,
+    createNodeRequestHandler,
+    isMainModule,
+    writeResponseToNodeResponse,
 } from '@angular/ssr/node';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -62,10 +62,13 @@ const roomTtlSeconds = (() => {
 
 const roomKeyPrefix = process.env['REDIS_KEY_PREFIX'] ?? 'buddy-poker:room:';
 const redisUrl = process.env['REDIS_URL'];
+const redisPasswordRaw = process.env['REDIS_PASSWORD'];
+const redisPassword = redisPasswordRaw?.trim() ? redisPasswordRaw : undefined;
 
 const roomPersistence: RoomPersistence = redisUrl
   ? createLazyRedisClientRoomPersistence({
       redisUrl,
+      redisPassword,
       keyPrefix: roomKeyPrefix,
       defaultTtlSeconds: roomTtlSeconds,
     })

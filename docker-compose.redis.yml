@@ -7,6 +7,7 @@ services:
       NODE_ENV: production
       PORT: 4000
       REDIS_URL: redis://redis:6379
+      # REDIS_PASSWORD: "mySecret"
       ROOM_TTL_SECONDS: 86400
       REDIS_KEY_PREFIX: "buddy-poker:room:"
     depends_on:
@@ -15,3 +16,5 @@ services:
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
+    # Para habilitar senha, descomente:
+    # command: ["redis-server", "--save", "", "--appendonly", "no", "--requirepass", "mySecret"]
