@@ -903,6 +903,75 @@ describe('PokerWsService', () => {
     expect(error).toBe('Connection error');
   });
 
+  it('should suppress errors containing "web socket" (with space) in HTTP polling mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Set the service in http-polling mode
+    (service as any).currentMode = 'http-polling';
+
+    // Create handlers and trigger onError with "web socket" (with space)
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('Failed to connect via web socket');
+
+    // Error should NOT be propagated to error$ when it contains "web socket"
+    expect(error).toBe(null);
+  });
+
+  it('should show non-WebSocket errors in UI when in HTTP polling mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Set the service in http-polling mode
+    (service as any).currentMode = 'http-polling';
+
+    // Create handlers and trigger onError with non-WebSocket error
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('Authentication failed');
+
+    // Error SHOULD be propagated to error$ when it's not a WebSocket error
+    expect(error).toBe('Authentication failed');
+  });
+
+  it('should handle empty error string in HTTP polling mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Set the service in http-polling mode
+    (service as any).currentMode = 'http-polling';
+
+    // Create handlers and trigger onError with empty string
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('');
+
+    // Empty error should be propagated to error$ 
+    expect(error).toBe('');
+  });
+
   it('should attempt to switch back to WebSocket after retry timeout in HTTP polling mode', () => {
     vi.useFakeTimers();
 
