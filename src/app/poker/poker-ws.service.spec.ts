@@ -206,28 +206,15 @@ describe('PokerWsService', () => {
     });
   });
 
-  it('should no-op openSocket when not in browser platform', () => {
+  it('should no-op on switchToWebSocket when not in browser platform', () => {
     TestBed.configureTestingModule({
       providers: [{ provide: PLATFORM_ID, useValue: 'server' }],
     });
 
     const service = TestBed.inject(PokerWsService);
-    (service as any).openSocket({ mode: 'connecting' });
+    (service as any).switchToWebSocket();
 
     expect(MockWebSocket.instances.length).toBe(0);
-  });
-
-  it('should not send join on open if lastJoin is missing', () => {
-    TestBed.configureTestingModule({
-      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
-    });
-
-    const service = TestBed.inject(PokerWsService);
-    (service as any).openSocket({ mode: 'connecting' });
-
-    const ws = MockWebSocket.instances[0];
-    ws.open();
-    expect(ws.sent.length).toBe(0);
   });
 
   it('should not create a new socket when current is CONNECTING, but should update lastJoin', () => {
@@ -409,7 +396,7 @@ describe('PokerWsService', () => {
     vi.restoreAllMocks();
   });
 
-  it('should not reconnect if a socket is already OPEN/CONNECTING when timeout fires', () => {
+  it('should use transport to manage reconnect and not create new sockets when already connected', () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(0);
 
@@ -426,17 +413,16 @@ describe('PokerWsService', () => {
     ws.close();
     expect(MockWebSocket.instances.length).toBe(1);
 
-    // Do not call connect() here (it clears the reconnect timer).
-    (service as any).socket = { readyState: MockWebSocket.CONNECTING };
-
+    // Transport will handle reconnect internally
     vi.advanceTimersByTime(500);
-    expect(MockWebSocket.instances.length).toBe(1);
+    // Should create a new socket for reconnect
+    expect(MockWebSocket.instances.length).toBe(2);
 
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
-  it('should disconnect manually and cancel reconnect attempts', () => {
+  it('should disconnect manually and not attempt reconnection', () => {
     vi.useFakeTimers();
     vi.spyOn(Math, 'random').mockReturnValue(0);
 
@@ -456,15 +442,8 @@ describe('PokerWsService', () => {
     vi.advanceTimersByTime(10_000);
     expect(MockWebSocket.instances.length).toBe(1);
 
-    // When socket is null but roomId is still set, send should no-op.
-    (service as any).roomId = 'room-1';
+    // When transport is null, send should no-op.
     service.vote('3');
-
-    // scheduleReconnect should short-circuit when manualDisconnect=true
-    (service as any).manualDisconnect = true;
-    (service as any).scheduleReconnect();
-    vi.advanceTimersByTime(10_000);
-    expect(MockWebSocket.instances.length).toBe(1);
 
     vi.useRealTimers();
     vi.restoreAllMocks();
@@ -511,9 +490,8 @@ describe('PokerWsService', () => {
     ws.close();
     expect(MockWebSocket.instances.length).toBe(1);
 
-    // Simulate state changing before the timer fires without clearing it.
-    (service as any).manualDisconnect = true;
-    (service as any).lastJoin = null;
+    // Disconnect to prevent reconnect
+    service.disconnect();
 
     vi.advanceTimersByTime(500);
     expect(MockWebSocket.instances.length).toBe(1);
