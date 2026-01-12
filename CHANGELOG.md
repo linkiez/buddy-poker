@@ -1,3 +1,15 @@
+# [1.3.0](https://github.com/linkiez/buddy-poker/compare/v1.2.0...v1.3.0) (2026-01-12)
+
+
+### Bug Fixes
+
+* clarify error suppression comment in poker-ws.service.ts ([209546e](https://github.com/linkiez/buddy-poker/commit/209546ec4b426039e0b32fde36c6f950c993ec6f))
+
+
+### Features
+
+* improve WebSocket fallback UX - reduce timeouts and suppress errors ([de5f0fc](https://github.com/linkiez/buddy-poker/commit/de5f0fcfeeed4ac83d058e67d8f0417622847e0c))
+
 # [1.2.0](https://github.com/linkiez/buddy-poker/compare/v1.1.0...v1.2.0) (2026-01-12)
 
 
