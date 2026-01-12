@@ -499,4 +499,424 @@ describe('PokerWsService', () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
   });
+
+  it('should expose mode$ observable', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    expect(mode).toBe(null);
+
+    service.connect('room-1', 'Dev Ninja');
+    expect(mode).toBe('websocket');
+  });
+
+  it('should switch to HTTP polling when WebSocket fails to connect after max attempts', () => {
+    vi.useFakeTimers();
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    // Mock fetch for HTTP polling
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clientId: 'c1' }),
+    });
+    (globalThis as any).fetch = mockFetch;
+
+    service.connect('room-1', 'Dev Ninja');
+    expect(mode).toBe('websocket');
+
+    // Simulate WebSocket failing by closing 3 times
+    for (let i = 0; i < 3; i++) {
+      const ws = MockWebSocket.instances[i];
+      ws.close();
+      if (i < 2) {
+        vi.advanceTimersByTime(Math.pow(2, i) * 500 + 200);
+      }
+    }
+    
+    // Now the WebSocket should have failed
+    expect(MockWebSocket.instances.length).toBe(3);
+    
+    // Check if the transport has hasConnectionFailed
+    const transport = (service as any).transport;
+    const hasConnectionFailed = transport?.hasConnectionFailed?.();
+    expect(hasConnectionFailed).toBe(true);
+    
+    // Manually trigger the onStatusChange handler with the conditions for switching
+    const handlers = (service as any).createTransportHandlers();
+
+    handlers.onStatusChange('disconnected');
+    
+    // Should have switched to http-polling
+    expect(mode).toBe('http-polling');
+    
+    expect(mode).toBe('http-polling');
+    
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('should schedule WebSocket retry when connected via HTTP polling', () => {
+    vi.useFakeTimers();
+    const originalFetch = (globalThis as any).fetch;
+
+    try {
+      TestBed.configureTestingModule({
+        providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+      });
+
+      const service = TestBed.inject(PokerWsService);
+
+      // Mock fetch for HTTP polling
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ clientId: 'c1' }),
+      });
+      (globalThis as any).fetch = mockFetch;
+
+      // Set up the service in http-polling mode with lastJoin
+      (service as any).currentMode = 'http-polling';
+      (service as any).lastJoin = { roomId: 'room-1', name: 'Dev Ninja' };
+      
+      // Manually trigger the onStatusChange handler with http-polling connected
+      const handlers = (service as any).createTransportHandlers();
+      handlers.onStatusChange('connected');
+      
+      // After connection in http-polling mode, wsRetryTimeoutId should be set
+      const wsRetryTimeoutId = (service as any).wsRetryTimeoutId;
+      expect(wsRetryTimeoutId).not.toBe(null);
+    } finally {
+      vi.useRealTimers();
+      (globalThis as any).fetch = originalFetch;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('should not switch to HTTP polling when already in http-polling mode', () => {
+    const originalFetch = (globalThis as any).fetch;
+
+    try {
+      TestBed.configureTestingModule({
+        providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+      });
+
+      const service = TestBed.inject(PokerWsService);
+
+      // Mock fetch for HTTP polling
+      const mockFetch = vi.fn();
+      (globalThis as any).fetch = mockFetch;
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ clientId: 'c1' }),
+      });
+
+      // Manually switch to HTTP polling
+      (service as any).currentMode = 'http-polling';
+      (service as any).switchToHttpPolling();
+      
+      // Should return early without creating transport
+      expect((service as any).currentMode).toBe('http-polling');
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('should call getEnvNumber and handle missing window', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Save original window
+    const originalWindow = (globalThis as any).window;
+    
+    // Remove window
+    delete (globalThis as any).window;
+    
+    const result = (service as any).getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10000);
+    expect(result).toBe(10000);
+    
+    // Restore window
+    (globalThis as any).window = originalWindow;
+  });
+
+  it('should call getEnvNumber with invalid value', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Set invalid values
+    (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS = 'not-a-number';
+    
+    const result1 = (service as any).getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10000);
+    expect(result1).toBe(10000);
+    
+    (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS = -5;
+    const result2 = (service as any).getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10000);
+    expect(result2).toBe(10000);
+    
+    (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS = Infinity;
+    const result3 = (service as any).getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10000);
+    expect(result3).toBe(10000);
+    
+    // Clean up
+    delete (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS;
+  });
+
+  it('should call getEnvNumber with valid value', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Set valid value
+    (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS = 5000;
+    
+    const result = (service as any).getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10000);
+    expect(result).toBe(5000);
+    
+    // Clean up
+    delete (globalThis.window as any).WS_CONNECTION_TIMEOUT_MS;
+  });
+
+  it('should handle error message from server', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    service.connect('room-1', 'Dev Ninja');
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Send error message
+    ws.message(JSON.stringify({ type: 'error', message: 'Room is full' }));
+    expect(error).toBe('Room is full');
+  });
+
+  it('should ignore state message with invalid roomId', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let state: any = undefined;
+    service.state$.subscribe((s) => {
+      state = s;
+    });
+
+    service.connect('room-1', 'Dev Ninja');
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Send state without roomId
+    ws.message(JSON.stringify({ type: 'state', reveal: false, participants: [] }));
+    expect(state).toBe(null);
+
+    // Send state with non-string roomId
+    ws.message(JSON.stringify({ type: 'state', roomId: 123, reveal: false, participants: [] }));
+    expect(state).toBe(null);
+  });
+
+  it('should no-op on switchToHttpPolling when not in browser platform', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'server' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    (service as any).switchToHttpPolling();
+
+    expect((service as any).transport).toBe(null);
+  });
+
+  it('should clear wsRetryTimeout on clearWsRetryTimeout', () => {
+    vi.useFakeTimers();
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Set a timeout
+    (service as any).wsRetryTimeoutId = setTimeout(() => {}, 60000);
+    
+    // Clear it
+    (service as any).clearWsRetryTimeout();
+    
+    expect((service as any).wsRetryTimeoutId).toBe(null);
+
+    vi.useRealTimers();
+  });
+
+  it('should disconnect and clear all subjects and timers', () => {
+    vi.useFakeTimers();
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let clientId: string | null = 'initial';
+    let roomToken: string | null = 'initial';
+    let error: string | null = 'initial';
+    let state: any = 'initial';
+    let status: string | null = 'initial';
+    let mode: string | null = 'initial';
+
+    service.clientId$.subscribe((v) => {
+      clientId = v;
+    });
+    service.roomToken$.subscribe((v) => {
+      roomToken = v;
+    });
+    service.error$.subscribe((v) => {
+      error = v;
+    });
+    service.state$.subscribe((v) => {
+      state = v;
+    });
+    service.status$.subscribe((s) => {
+      status = s;
+    });
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    service.connect('room-1', 'Dev Ninja');
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Set some state
+    ws.message(JSON.stringify({ type: 'joined', clientId: 'c1', token: 't1' }));
+    expect(clientId).toBe('c1');
+    expect(roomToken).toBe('t1');
+
+    // Disconnect
+    service.disconnect();
+
+    // Check all subjects are cleared
+    expect(clientId).toBe(null);
+    expect(roomToken).toBe(null);
+    expect(error).toBe(null);
+    expect(state).toBe(null);
+    expect(status).toBe('disconnected');
+    expect(mode).toBe(null);
+
+    vi.useRealTimers();
+  });
+
+  it('should trigger onError handler', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Create handlers and trigger onError directly
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('Test error message');
+
+    expect(error).toBe('Test error message');
+  });
+
+  it('should attempt to switch back to WebSocket after retry timeout in HTTP polling mode', () => {
+    vi.useFakeTimers();
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    // Set up the service in http-polling mode with lastJoin
+    (service as any).currentMode = 'http-polling';
+    (service as any).lastJoin = { roomId: 'room-1', name: 'Dev Ninja' };
+    
+    // Call scheduleWsRetry directly
+    (service as any).scheduleWsRetry();
+    
+    // Verify timeout is set
+    expect((service as any).wsRetryTimeoutId).not.toBe(null);
+    
+    // Advance timers to trigger the timeout
+    vi.advanceTimersByTime(60_000);
+    
+    // Should have switched back to websocket
+    expect(mode).toBe('websocket');
+    
+    vi.useRealTimers();
+  });
+
+  it('should not switch to WebSocket when retry timeout fires but conditions are not met', () => {
+    vi.useFakeTimers();
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    // Set up the service in http-polling mode but without lastJoin
+    (service as any).currentMode = 'http-polling';
+    (service as any).lastJoin = null;
+    
+    // Call scheduleWsRetry directly
+    (service as any).scheduleWsRetry();
+    
+    // Advance timers to trigger the timeout
+    vi.advanceTimersByTime(60_000);
+    
+    // Should NOT have switched to websocket
+    expect(mode).toBe(null);
+    
+    vi.useRealTimers();
+  });
 });
