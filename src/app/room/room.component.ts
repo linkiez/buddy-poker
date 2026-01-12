@@ -87,6 +87,7 @@ export class RoomComponent implements OnInit, OnDestroy {
   protected connectionStatus = signal<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>(
     'disconnected',
   );
+  protected transportMode = signal<'websocket' | 'http-polling' | null>(null);
 
   protected isOwner = computed(() => {
     const state = this.state();
@@ -117,6 +118,16 @@ export class RoomComponent implements OnInit, OnDestroy {
       default:
         return 'desconectado';
     }
+  });
+
+  protected transportModeLabel = computed(() => {
+    const mode = this.transportMode();
+    if (mode === 'websocket') {
+      return 'WebSocket';
+    } else if (mode === 'http-polling') {
+      return 'HTTP';
+    }
+    return null;
   });
 
   protected connectionSeverity = computed<'success' | 'warn' | 'danger'>(() => {
@@ -212,6 +223,12 @@ export class RoomComponent implements OnInit, OnDestroy {
     this.subs.add(
       this.ws.status$.subscribe((value) => {
         this.connectionStatus.set(value);
+      }),
+    );
+
+    this.subs.add(
+      this.ws.mode$.subscribe((value) => {
+        this.transportMode.set(value);
       }),
     );
 

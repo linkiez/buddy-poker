@@ -49,7 +49,7 @@ Define as interfaces e tipos compartilhados:
 Implementação de transporte via WebSocket:
 
 - **Conexão**: Conecta em `ws(s)://<host>/ws`
-- **Timeout**: 10 segundos (configurável)
+- **Timeout**: 5 segundos (configurável)
 - **Reconexão**: Exponential backoff (500ms a 10s)
 - **Max tentativas**: 3 (configurável) antes de dar up e permitir fallback
 
@@ -64,7 +64,7 @@ Características:
 Implementação de transporte via HTTP polling:
 
 - **POST `/api/poker/action`**: Envia ações (join, vote, reveal, reset)
-- **GET `/api/poker/events`**: Recebe eventos (polling a cada 3s, configurável)
+- **GET `/api/poker/events`**: Recebe eventos (polling a cada 1.5s, configurável)
 - **Sequenciamento**: Usa `lastEventId` para evitar duplicatas
 - **Sessão**: Mantém `clientId` entre requests
 
@@ -82,6 +82,7 @@ Serviço Angular que gerencia o transporte:
 - **Fallback**: Switch automático para HTTP quando WebSocket falha
 - **Retry**: Tenta voltar para WebSocket a cada 60s quando em HTTP
 - **Transparência**: API pública permanece a mesma (connect, vote, reveal, reset)
+- **Supressão de Erros**: Não exibe erros de WebSocket na UI quando em modo HTTP polling (evita assustar usuários)
 
 Novo observable:
 - `mode$` - Emite o modo de transporte atual ('websocket' | 'http-polling')
@@ -162,10 +163,10 @@ Quando o estado da sala muda (via WebSocket ou HTTP), o servidor:
 As configurações podem ser definidas via `window` globals:
 
 ```typescript
-window.WS_CONNECTION_TIMEOUT_MS = 10000;      // Timeout de conexão WS
+window.WS_CONNECTION_TIMEOUT_MS = 5000;       // Timeout de conexão WS
 window.WS_RECONNECT_BASE_DELAY_MS = 500;      // Delay base para reconexão
 window.WS_RECONNECT_MAX_DELAY_MS = 10000;     // Delay máximo para reconexão
-window.HTTP_POLLING_INTERVAL_MS = 3000;       // Intervalo de polling HTTP
+window.HTTP_POLLING_INTERVAL_MS = 1500;       // Intervalo de polling HTTP
 ```
 
 Valores padrão estão em `PokerWsService.getTransportConfig()`.
@@ -220,7 +221,7 @@ O sistema emite logs relevantes no console:
 
 ### Polling Interval
 
-Intervalo de 3 segundos é um compromisso:
+Intervalo de 1.5 segundos é um compromisso:
 - Menor: Mais responsivo, mas mais carga
 - Maior: Menos carga, mas menos responsivo
 

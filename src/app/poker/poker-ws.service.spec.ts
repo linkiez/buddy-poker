@@ -857,6 +857,52 @@ describe('PokerWsService', () => {
     expect(error).toBe('Test error message');
   });
 
+  it('should suppress errors in UI when in HTTP polling mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Set the service in http-polling mode
+    (service as any).currentMode = 'http-polling';
+
+    // Create handlers and trigger onError
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('WebSocket connection failed');
+
+    // Error should NOT be propagated to error$ when in http-polling mode
+    expect(error).toBe(null);
+  });
+
+  it('should show errors in UI when in websocket mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // Set the service in websocket mode
+    (service as any).currentMode = 'websocket';
+
+    // Create handlers and trigger onError
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onError('Connection error');
+
+    // Error SHOULD be propagated to error$ when in websocket mode
+    expect(error).toBe('Connection error');
+  });
+
   it('should attempt to switch back to WebSocket after retry timeout in HTTP polling mode', () => {
     vi.useFakeTimers();
 
