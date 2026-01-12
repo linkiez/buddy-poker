@@ -968,7 +968,7 @@ describe('PokerWsService', () => {
     const handlers = (service as any).createTransportHandlers();
     handlers.onError('');
 
-    // Empty error should be propagated to error$ 
+    // Empty error should be propagated to error$.
     expect(error).toBe('');
   });
 
