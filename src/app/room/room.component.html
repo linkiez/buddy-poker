@@ -14,6 +14,13 @@
           [severity]="connectionSeverity()"
           [rounded]="true"
         />
+        <span *ngIf="isJoined() && transportModeLabel()">·</span>
+        <p-tag
+          *ngIf="isJoined() && transportModeLabel()"
+          [value]="'Realtime: ' + transportModeLabel()"
+          severity="secondary"
+          [rounded]="true"
+        />
         <span *ngIf="state()?.reveal">· votos revelados</span>
         <span *ngIf="!state()?.reveal">· cartas na mesa (viradas pra baixo)</span>
         <span *ngIf="isJoined() && isOwner()">· você é o moderador 😎</span>

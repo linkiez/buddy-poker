@@ -158,6 +158,18 @@ export class PokerWsService {
         this.handleMessage(message);
       },
       onError: (error: string) => {
+        // Log all errors to console for debugging
+        console.error('[PokerWsService] Transport error:', error);
+
+        // When we're in HTTP polling mode, only suppress WebSocket-related transition errors.
+        // Genuine HTTP polling errors (auth failures, network issues, etc.) should still be shown in the UI.
+        if (this.currentMode === 'http-polling') {
+          const normalizedError = (error || '').toLowerCase();
+          // Suppress only if the error clearly refers to WebSocket issues during fallback.
+          if (normalizedError.includes('websocket') || normalizedError.includes('web socket')) {
+            return;
+          }
+        }
         this.errorSubject.next(error);
       },
     };
@@ -264,8 +276,8 @@ export class PokerWsService {
   }
 
   private getTransportConfig() {
-    const connectionTimeoutMs = this.getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10_000);
-    const pollingIntervalMs = this.getEnvNumber('HTTP_POLLING_INTERVAL_MS', 3_000);
+    const connectionTimeoutMs = this.getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 5_000);
+    const pollingIntervalMs = this.getEnvNumber('HTTP_POLLING_INTERVAL_MS', 1_500);
     const reconnectBaseDelayMs = this.getEnvNumber('WS_RECONNECT_BASE_DELAY_MS', 500);
     const reconnectMaxDelayMs = this.getEnvNumber('WS_RECONNECT_MAX_DELAY_MS', 10_000);
 
