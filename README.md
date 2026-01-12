@@ -93,9 +93,13 @@ yarn e2e
 
 - Frontend: Angular (SSR) + PrimeNG
 - Backend SSR: Node + Express
-- Realtime: `ws` com endpoint `ws://<host>/ws`
+- Realtime: WebSocket (`ws://<host>/ws`) com fallback para HTTP
 
-### Protocolo WebSocket
+### Protocolo de Comunicação em Tempo Real
+
+O app usa **WebSocket como transporte principal**, com **fallback automático para HTTP polling** quando WebSocket não está disponível.
+
+#### WebSocket (modo preferencial)
 
 Mensagens são JSON. Tipos principais:
 
@@ -103,6 +107,41 @@ Mensagens são JSON. Tipos principais:
 - `vote` (votar)
 - `reveal` (somente moderador)
 - `reset` (somente moderador)
+
+#### HTTP Polling (fallback automático)
+
+Quando WebSocket não está disponível (por proxy, firewall ou restrições de navegador), o app automaticamente alterna para HTTP polling:
+
+- `POST /api/poker/action` - envia ações (join, vote, reveal, reset)
+- `GET /api/poker/events` - recebe atualizações do estado da sala
+
+#### Detecção e Fallback
+
+O cliente tenta conectar via WebSocket primeiro. Se a conexão falhar após 3 tentativas (timeout de 10 segundos por tentativa), o app automaticamente alterna para HTTP polling. 
+
+Enquanto em modo HTTP, o cliente tenta periodicamente (a cada 60 segundos) retornar para WebSocket.
+
+#### Configuração (opcional)
+
+Você pode ajustar os parâmetros de fallback definindo variáveis globais no `window` antes de carregar o app:
+
+```javascript
+window.WS_CONNECTION_TIMEOUT_MS = 10000;  // Timeout de conexão WebSocket (padrão: 10s)
+window.WS_RECONNECT_BASE_DELAY_MS = 500;  // Delay base para reconexão (padrão: 500ms)
+window.WS_RECONNECT_MAX_DELAY_MS = 10000; // Delay máximo para reconexão (padrão: 10s)
+window.HTTP_POLLING_INTERVAL_MS = 3000;   // Intervalo de polling HTTP (padrão: 3s)
+```
+
+#### Simulação de Falha de WebSocket (teste local)
+
+Para testar o fallback localmente, você pode bloquear o WebSocket no DevTools:
+
+1. Abra DevTools (F12)
+2. Network tab → Filter → WS (WebSocket)
+3. Right-click no WebSocket connection → Block request URL
+4. Recarregue a página
+
+O app deve alternar automaticamente para HTTP polling e continuar funcionando normalmente.
 
 Docs detalhadas em:
 
