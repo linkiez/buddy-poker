@@ -161,11 +161,10 @@ export class PokerWsService {
         // Log all errors to console for debugging
         console.error('[PokerWsService] Transport error:', error);
         
-        // Don't show WebSocket errors in UI when we're in HTTP polling mode
-        // or when we're currently using websocket transport (errors from websocket when in http mode)
+        // Don't show errors in UI when we're in HTTP polling mode
+        // Since we're already using HTTP as a fallback, transport errors are expected
+        // and don't need to alarm the user (the connection is still working)
         if (this.currentMode === 'http-polling') {
-          // Only show errors that are from HTTP transport, not websocket
-          // Since we're already in http-polling, websocket errors are expected
           return;
         }
         
