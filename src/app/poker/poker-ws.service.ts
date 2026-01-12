@@ -143,8 +143,7 @@ export class PokerWsService {
         if (
           this.currentMode === 'websocket' &&
           status === 'disconnected' &&
-          this.transport instanceof WebSocketTransport &&
-          (this.transport as WebSocketTransport).hasConnectionFailed()
+          this.transport?.hasConnectionFailed?.()
         ) {
           console.warn('[PokerWsService] WebSocket failed, switching to HTTP polling');
           this.switchToHttpPolling();

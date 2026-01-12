@@ -166,6 +166,7 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
   }
 
   broadcastRoomState(room);
+  broadcastRoomStateHttp(room);
 }
 
 async function handleJoinMessage(
@@ -220,6 +221,7 @@ async function handleJoinMessage(
     .catch(() => undefined);
 
   broadcastRoomState(room);
+  broadcastRoomStateHttp(room);
 }
 
 function handleVoteMessage(
@@ -242,6 +244,7 @@ function handleVoteMessage(
   participant.vote = msg.value.slice(0, 8);
   state.currentRoom.participants.set(state.clientId, participant);
   broadcastRoomState(state.currentRoom);
+  broadcastRoomStateHttp(state.currentRoom);
 }
 
 function handleRevealMessage(state: PokerConnectionState, socket: WebSocket): void {
@@ -262,6 +265,7 @@ function handleRevealMessage(state: PokerConnectionState, socket: WebSocket): vo
 
   state.currentRoom.reveal = true;
   broadcastRoomState(state.currentRoom);
+  broadcastRoomStateHttp(state.currentRoom);
 }
 
 function handleResetMessage(state: PokerConnectionState, socket: WebSocket): void {
@@ -300,6 +304,7 @@ function handleResetMessage(state: PokerConnectionState, socket: WebSocket): voi
     p.vote = null;
   }
   broadcastRoomState(state.currentRoom);
+  broadcastRoomStateHttp(state.currentRoom);
 }
 
 // HTTP Fallback Support
@@ -380,6 +385,7 @@ function broadcastRoomStateHttp(room: PokerRoomState): void {
 
 // Clean up old HTTP sessions periodically
 const httpSessionTtlMs = 5 * 60 * 1000; // 5 minutes
+const httpCleanupIntervalMs = 60_000; // 1 minute
 setInterval(() => {
   const now = Date.now();
   for (const [clientId, session] of httpSessions.entries()) {
@@ -388,7 +394,7 @@ setInterval(() => {
       eventQueue.delete(clientId);
     }
   }
-}, 60_000);
+}, httpCleanupIntervalMs);
 
 // Middleware to parse JSON
 app.use(express.json());
@@ -431,7 +437,17 @@ app.post('/api/poker/action', async (req, res) => {
 
       const session = createHttpSession(clientId, room.roomId, name, room);
 
-      const response: any = {
+      type JoinResponse = {
+        clientId: string;
+        message: {
+          type: 'joined';
+          clientId: string;
+          roomId: string;
+          token?: string;
+        };
+      };
+
+      const response: JoinResponse = {
         clientId,
         message: {
           type: 'joined',
