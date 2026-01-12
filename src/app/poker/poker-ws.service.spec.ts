@@ -3,8 +3,6 @@ import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PokerWsService } from './poker-ws.service';
-import { WebSocketTransport } from './websocket-transport';
-import { HttpPollingTransport } from './http-polling-transport';
 
 type Listener = (event: any) => void;
 
