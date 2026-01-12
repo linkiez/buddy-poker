@@ -564,12 +564,12 @@ describe('PokerWsService', () => {
     
     // Manually trigger the onStatusChange handler with the conditions for switching
     const handlers = (service as any).createTransportHandlers();
-    (service as any).currentMode = 'websocket';
-    (service as any).transport = transport;
-    
+
     handlers.onStatusChange('disconnected');
     
     // Should have switched to http-polling
+    expect(mode).toBe('http-polling');
+    
     expect(mode).toBe('http-polling');
     
     vi.useRealTimers();
