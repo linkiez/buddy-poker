@@ -6,6 +6,9 @@ import type {
     PokerRoomViewState,
     PokerServerMessage,
 } from './poker-types';
+import type { Transport, TransportEventHandlers, TransportStatus, TransportMode } from './transport.types';
+import { WebSocketTransport } from './websocket-transport';
+import { HttpPollingTransport } from './http-polling-transport';
 
 type PokerWsConnectionStatus =
   | 'disconnected'
@@ -19,15 +22,15 @@ type PokerWsConnectionStatus =
 export class PokerWsService {
   private readonly platformId = inject(PLATFORM_ID);
 
-  private socket: WebSocket | null = null;
+  private transport: Transport | null = null;
   private clientId: string | null = null;
   private roomId: string | null = null;
   private roomToken: string | null = null;
+  private currentMode: TransportMode | null = null;
 
   private lastJoin: { roomId: string; name: string; token?: string } | null = null;
-  private reconnectAttempts = 0;
-  private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private manualDisconnect = false;
+  private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private wsRetryIntervalMs = 60_000; // Try to return to WebSocket every 60 seconds
 
   private readonly clientIdSubject = new BehaviorSubject<string | null>(null);
   private readonly roomTokenSubject = new BehaviorSubject<string | null>(null);
@@ -35,6 +38,7 @@ export class PokerWsService {
   private readonly statusSubject = new BehaviorSubject<PokerWsConnectionStatus>(
     'disconnected',
   );
+  private readonly modeSubject = new BehaviorSubject<TransportMode | null>(null);
 
   private readonly stateSubject = new BehaviorSubject<PokerRoomViewState | null>(
     null,
@@ -60,12 +64,16 @@ export class PokerWsService {
     return this.statusSubject.asObservable();
   }
 
+  get mode$(): Observable<TransportMode | null> {
+    return this.modeSubject.asObservable();
+  }
+
   clearError(): void {
     this.errorSubject.next(null);
   }
 
   get isConnected(): boolean {
-    return this.socket?.readyState === WebSocket.OPEN;
+    return this.transport?.status === 'connected';
   }
 
   connect(roomId: string, name: string, token?: string): void {
@@ -73,21 +81,16 @@ export class PokerWsService {
       return;
     }
 
-    this.manualDisconnect = false;
     this.roomId = roomId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}) };
-    this.clearReconnectTimeout();
+    this.clearWsRetryTimeout();
 
-    if (this.socket?.readyState === WebSocket.OPEN) {
-      this.send({ type: 'join', roomId, name, ...(token ? { token } : {}) });
-      return;
+    // Try WebSocket first
+    if (!this.transport || this.currentMode !== 'websocket') {
+      this.switchToWebSocket();
     }
 
-    if (this.socket?.readyState === WebSocket.CONNECTING) {
-      return;
-    }
-
-    this.openSocket({ mode: 'connecting' });
+    this.transport?.connect(roomId, name, token);
   }
 
   vote(value: string): void {
@@ -95,7 +98,7 @@ export class PokerWsService {
       return;
     }
 
-    this.send({ type: 'vote', roomId: this.roomId, value });
+    this.transport?.send({ type: 'vote', roomId: this.roomId, value });
   }
 
   reveal(): void {
@@ -103,7 +106,7 @@ export class PokerWsService {
       return;
     }
 
-    this.send({ type: 'reveal', roomId: this.roomId });
+    this.transport?.send({ type: 'reveal', roomId: this.roomId });
   }
 
   reset(): void {
@@ -111,156 +114,180 @@ export class PokerWsService {
       return;
     }
 
-    this.send({ type: 'reset', roomId: this.roomId });
+    this.transport?.send({ type: 'reset', roomId: this.roomId });
   }
 
   disconnect(): void {
-    this.manualDisconnect = true;
-    this.clearReconnectTimeout();
-
-    this.socket?.close();
-    this.socket = null;
+    this.clearWsRetryTimeout();
+    this.transport?.disconnect();
+    this.transport = null;
     this.clientId = null;
     this.roomId = null;
     this.roomToken = null;
     this.lastJoin = null;
-    this.reconnectAttempts = 0;
+    this.currentMode = null;
     this.stateSubject.next(null);
     this.clientIdSubject.next(null);
     this.roomTokenSubject.next(null);
     this.errorSubject.next(null);
     this.statusSubject.next('disconnected');
+    this.modeSubject.next(null);
   }
 
-  private openSocket(options: { mode: 'connecting' | 'reconnecting' }): void {
+  private createTransportHandlers(): TransportEventHandlers {
+    return {
+      onStatusChange: (status: TransportStatus) => {
+        this.statusSubject.next(status);
+
+        // If WebSocket failed to connect after attempts, fallback to HTTP
+        if (
+          this.currentMode === 'websocket' &&
+          status === 'disconnected' &&
+          this.transport instanceof WebSocketTransport &&
+          (this.transport as WebSocketTransport).hasConnectionFailed()
+        ) {
+          console.warn('[PokerWsService] WebSocket failed, switching to HTTP polling');
+          this.switchToHttpPolling();
+        }
+
+        // Schedule retry to WebSocket if we're in HTTP mode and connected
+        if (this.currentMode === 'http-polling' && status === 'connected') {
+          this.scheduleWsRetry();
+        }
+      },
+      onMessage: (message: PokerServerMessage) => {
+        this.handleMessage(message);
+      },
+      onError: (error: string) => {
+        this.errorSubject.next(error);
+      },
+    };
+  }
+
+  private handleMessage(msg: PokerServerMessage): void {
+    if (msg.type === 'joined' && typeof msg.clientId === 'string') {
+      this.clientId = msg.clientId;
+      this.clientIdSubject.next(msg.clientId);
+
+      if (typeof (msg as { token?: unknown }).token === 'string') {
+        this.roomToken = (msg as { token: string }).token;
+        this.roomTokenSubject.next(this.roomToken);
+      }
+      return;
+    }
+
+    if (msg.type === 'error' && typeof msg.message === 'string') {
+      this.errorSubject.next(msg.message);
+      return;
+    }
+
+    if (msg.type === 'state') {
+      const state = msg as PokerRoomViewState;
+      if (typeof state.roomId === 'string') {
+        this.stateSubject.next(state);
+      }
+    }
+  }
+
+  private switchToWebSocket(): void {
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
 
-    const protocol = globalThis.location.protocol === 'https:' ? 'wss' : 'ws';
-    const url = `${protocol}://${globalThis.location.host}/ws`;
+    console.log('[PokerWsService] Switching to WebSocket transport');
+    
+    const oldTransport = this.transport;
+    oldTransport?.disconnect();
 
-    this.statusSubject.next(options.mode);
-    this.socket = new WebSocket(url);
-
-    this.socket.addEventListener('open', () => {
-      this.reconnectAttempts = 0;
-      this.statusSubject.next('connected');
-
-      if (this.lastJoin) {
-        this.send({
-          type: 'join',
-          roomId: this.lastJoin.roomId,
-          name: this.lastJoin.name,
-          ...(this.lastJoin.token ? { token: this.lastJoin.token } : {}),
-        });
-      }
+    const config = this.getTransportConfig();
+    this.transport = new WebSocketTransport(this.createTransportHandlers(), {
+      ...config,
+      reconnectMaxAttempts: 3, // Limit attempts before fallback
     });
+    this.currentMode = 'websocket';
+    this.modeSubject.next('websocket');
 
-    this.socket.addEventListener('message', (event) => {
-      const parsed = this.safeParse(event.data);
-      if (!parsed) {
-        return;
-      }
-
-      const msg = parsed as Partial<PokerServerMessage>;
-      if (msg.type === 'joined' && typeof msg.clientId === 'string') {
-        this.clientId = msg.clientId;
-        this.clientIdSubject.next(msg.clientId);
-
-        if (typeof (msg as { token?: unknown }).token === 'string') {
-          this.roomToken = (msg as { token: string }).token;
-          this.roomTokenSubject.next(this.roomToken);
-        }
-        return;
-      }
-
-      if (msg.type === 'error' && typeof msg.message === 'string') {
-        this.errorSubject.next(msg.message);
-        return;
-      }
-
-      if (msg.type === 'state') {
-        const state = msg as PokerRoomViewState;
-        if (typeof state.roomId === 'string') {
-          this.stateSubject.next(state);
-        }
-      }
-    });
-
-    this.socket.addEventListener('close', () => {
-      this.socket = null;
-      this.clientId = null;
-      this.clientIdSubject.next(null);
-
-      if (this.manualDisconnect) {
-        this.statusSubject.next('disconnected');
-        return;
-      }
-
-      this.statusSubject.next('reconnecting');
-      this.scheduleReconnect();
-    });
-
-    this.socket.addEventListener('error', () => {
-      if (this.manualDisconnect) {
-        return;
-      }
-      this.statusSubject.next('reconnecting');
-    });
+    // Reconnect if we had a previous session
+    if (this.lastJoin) {
+      this.transport.connect(
+        this.lastJoin.roomId,
+        this.lastJoin.name,
+        this.lastJoin.token
+      );
+    }
   }
 
-  private scheduleReconnect(): void {
-    if (!this.lastJoin || this.manualDisconnect) {
+  private switchToHttpPolling(): void {
+    if (!isPlatformBrowser(this.platformId)) {
       return;
     }
 
-    this.clearReconnectTimeout();
-    this.reconnectAttempts += 1;
-
-    const maxDelayMs = 10_000;
-    const baseDelayMs = 500;
-    const exponentialDelayMs = baseDelayMs * Math.pow(2, this.reconnectAttempts - 1);
-    const delayMs = Math.min(exponentialDelayMs, maxDelayMs);
-    const jitterMs = Math.floor(Math.random() * 200);
-
-    this.reconnectTimeoutId = setTimeout(() => {
-      if (this.manualDisconnect || !this.lastJoin) {
-        return;
-      }
-      if (this.socket?.readyState === WebSocket.OPEN || this.socket?.readyState === WebSocket.CONNECTING) {
-        return;
-      }
-      this.openSocket({ mode: 'reconnecting' });
-    }, delayMs + jitterMs);
-  }
-
-  private clearReconnectTimeout(): void {
-    if (!this.reconnectTimeoutId) {
+    if (this.currentMode === 'http-polling') {
       return;
     }
 
-    clearTimeout(this.reconnectTimeoutId);
-    this.reconnectTimeoutId = null;
+    console.log('[PokerWsService] Switching to HTTP polling transport');
+    
+    const oldTransport = this.transport;
+    oldTransport?.disconnect();
+
+    const config = this.getTransportConfig();
+    this.transport = new HttpPollingTransport(this.createTransportHandlers(), config);
+    this.currentMode = 'http-polling';
+    this.modeSubject.next('http-polling');
+
+    // Reconnect if we had a previous session
+    if (this.lastJoin) {
+      this.transport.connect(
+        this.lastJoin.roomId,
+        this.lastJoin.name,
+        this.lastJoin.token
+      );
+    }
   }
 
-  private send(message: PokerClientMessage): void {
-    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
+  private scheduleWsRetry(): void {
+    this.clearWsRetryTimeout();
 
-    this.socket.send(JSON.stringify(message));
+    this.wsRetryTimeoutId = setTimeout(() => {
+      if (this.currentMode === 'http-polling' && this.lastJoin) {
+        console.log('[PokerWsService] Attempting to switch back to WebSocket...');
+        this.switchToWebSocket();
+      }
+    }, this.wsRetryIntervalMs);
   }
 
-  private safeParse(input: unknown): unknown {
-    if (typeof input !== 'string') {
-      return null;
+  private clearWsRetryTimeout(): void {
+    if (this.wsRetryTimeoutId) {
+      clearTimeout(this.wsRetryTimeoutId);
+      this.wsRetryTimeoutId = null;
+    }
+  }
+
+  private getTransportConfig() {
+    const connectionTimeoutMs = this.getEnvNumber('WS_CONNECTION_TIMEOUT_MS', 10_000);
+    const pollingIntervalMs = this.getEnvNumber('HTTP_POLLING_INTERVAL_MS', 3_000);
+    const reconnectBaseDelayMs = this.getEnvNumber('WS_RECONNECT_BASE_DELAY_MS', 500);
+    const reconnectMaxDelayMs = this.getEnvNumber('WS_RECONNECT_MAX_DELAY_MS', 10_000);
+
+    return {
+      connectionTimeoutMs,
+      pollingIntervalMs,
+      reconnectBaseDelayMs,
+      reconnectMaxDelayMs,
+    };
+  }
+
+  private getEnvNumber(key: string, defaultValue: number): number {
+    if (typeof globalThis === 'undefined' || !globalThis.window) {
+      return defaultValue;
     }
 
-    try {
-      return JSON.parse(input);
-    } catch {
-      return null;
+    const value = (globalThis.window as any)[key];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      return value;
     }
+
+    return defaultValue;
   }
 }

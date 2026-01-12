@@ -302,6 +302,284 @@ function handleResetMessage(state: PokerConnectionState, socket: WebSocket): voi
   broadcastRoomState(state.currentRoom);
 }
 
+// HTTP Fallback Support
+type HttpClientSession = {
+  clientId: string;
+  roomId: string;
+  name: string;
+  room: PokerRoomState;
+  lastEventId: number;
+  createdAt: number;
+};
+
+const httpSessions = new Map<string, HttpClientSession>();
+const eventQueue = new Map<string, Array<{ id: number; message: unknown }>>();
+let globalEventId = 0;
+
+function getHttpSession(clientId: string): HttpClientSession | null {
+  return httpSessions.get(clientId) ?? null;
+}
+
+function createHttpSession(
+  clientId: string,
+  roomId: string,
+  name: string,
+  room: PokerRoomState,
+): HttpClientSession {
+  const session: HttpClientSession = {
+    clientId,
+    roomId,
+    name,
+    room,
+    lastEventId: globalEventId,
+    createdAt: Date.now(),
+  };
+  httpSessions.set(clientId, session);
+  eventQueue.set(clientId, []);
+  return session;
+}
+
+function queueEventForHttpClient(clientId: string, message: unknown): void {
+  const queue = eventQueue.get(clientId);
+  if (!queue) {
+    return;
+  }
+
+  globalEventId += 1;
+  queue.push({ id: globalEventId, message });
+
+  // Keep only last 100 events per client
+  if (queue.length > 100) {
+    queue.shift();
+  }
+}
+
+function broadcastRoomStateHttp(room: PokerRoomState): void {
+  const participants = Array.from(room.participants.values()).map((p) => ({
+    id: p.id,
+    name: p.name,
+    hasVoted: p.vote !== null,
+    vote: room.reveal ? p.vote : null,
+  }));
+
+  const message = {
+    type: 'state',
+    roomId: room.roomId,
+    ownerId: room.ownerId,
+    reveal: room.reveal,
+    participants,
+  };
+
+  // Queue for all HTTP clients in this room
+  for (const [clientId, session] of httpSessions.entries()) {
+    if (session.roomId === room.roomId) {
+      queueEventForHttpClient(clientId, message);
+    }
+  }
+}
+
+// Clean up old HTTP sessions periodically
+const httpSessionTtlMs = 5 * 60 * 1000; // 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [clientId, session] of httpSessions.entries()) {
+    if (now - session.createdAt > httpSessionTtlMs) {
+      httpSessions.delete(clientId);
+      eventQueue.delete(clientId);
+    }
+  }
+}, 60_000);
+
+// Middleware to parse JSON
+app.use(express.json());
+
+/**
+ * HTTP Fallback - Action endpoint
+ */
+app.post('/api/poker/action', async (req, res) => {
+  try {
+    const msg = req.body;
+    const existingClientId = req.headers['x-client-id'] as string | undefined;
+
+    if (msg.type === 'join') {
+      const room = await getOrCreateRoom(msg.roomId);
+      const name = normalizeName(msg.name);
+      if (!name) {
+        res.status(400).json({ error: 'Invalid name' });
+        return;
+      }
+
+      const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
+      const tokenAllowed = isTokenAllowed({
+        roomToken: room.token,
+        providedToken: msg.token,
+        allowMissing: isFirstJoin,
+      });
+
+      if (!tokenAllowed) {
+        res.status(403).json({ error: 'Token da sala inválido. Peça o link correto para o moderador.' });
+        return;
+      }
+
+      const clientId = existingClientId ?? generateId();
+      
+      room.participants.set(clientId, { id: clientId, name, vote: null });
+
+      if (!room.ownerId) {
+        room.ownerId = clientId;
+      }
+
+      const session = createHttpSession(clientId, room.roomId, name, room);
+
+      const response: any = {
+        clientId,
+        message: {
+          type: 'joined',
+          clientId,
+          roomId: room.roomId,
+          ...(isFirstJoin ? { token: room.token } : {}),
+        },
+      };
+
+      res.json(response);
+
+      void roomPersistence
+        .set(room.roomId, { token: room.token, rounds: room.rounds }, { ttlSeconds: roomTtlSeconds })
+        .catch(() => undefined);
+
+      broadcastRoomState(room);
+      broadcastRoomStateHttp(room);
+      return;
+    }
+
+    // For other actions, require existing session
+    if (!existingClientId) {
+      res.status(401).json({ error: 'Client ID required' });
+      return;
+    }
+
+    const session = getHttpSession(existingClientId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    const room = session.room;
+    const participant = room.participants.get(existingClientId);
+    if (!participant) {
+      res.status(404).json({ error: 'Participant not found' });
+      return;
+    }
+
+    if (msg.type === 'vote') {
+      if (room.reveal) {
+        res.json({ message: null });
+        return;
+      }
+
+      participant.vote = msg.value.slice(0, 8);
+      room.participants.set(existingClientId, participant);
+      broadcastRoomState(room);
+      broadcastRoomStateHttp(room);
+      res.json({ message: null });
+      return;
+    }
+
+    if (msg.type === 'reveal') {
+      const guard = assertModeratorAction({
+        ownerId: room.ownerId,
+        clientId: existingClientId,
+        action: 'reveal',
+      });
+
+      if (!guard.ok) {
+        res.status(403).json({ error: guard.message });
+        return;
+      }
+
+      room.reveal = true;
+      broadcastRoomState(room);
+      broadcastRoomStateHttp(room);
+      res.json({ message: null });
+      return;
+    }
+
+    if (msg.type === 'reset') {
+      const guard = assertModeratorAction({
+        ownerId: room.ownerId,
+        clientId: existingClientId,
+        action: 'reset',
+      });
+
+      if (!guard.ok) {
+        res.status(403).json({ error: guard.message });
+        return;
+      }
+
+      room.rounds = appendRoundHistory({
+        reveal: room.reveal,
+        participants: room.participants.values(),
+        history: room.rounds,
+        maxRounds: 20,
+      });
+
+      void roomPersistence
+        .set(
+          room.roomId,
+          { token: room.token, rounds: room.rounds },
+          { ttlSeconds: roomTtlSeconds },
+        )
+        .catch(() => undefined);
+
+      room.reveal = false;
+      for (const p of room.participants.values()) {
+        p.vote = null;
+      }
+      broadcastRoomState(room);
+      broadcastRoomStateHttp(room);
+      res.json({ message: null });
+      return;
+    }
+
+    res.status(400).json({ error: 'Unknown action type' });
+  } catch (error) {
+    console.error('Error handling action:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/**
+ * HTTP Fallback - Events endpoint (polling)
+ */
+app.get('/api/poker/events', (req, res) => {
+  try {
+    const clientId = req.query['clientId'] as string;
+    const lastEventId = Number(req.query['lastEventId'] ?? 0);
+
+    if (!clientId) {
+      res.status(400).json({ error: 'Client ID required' });
+      return;
+    }
+
+    const session = getHttpSession(clientId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    // Update session timestamp
+    session.createdAt = Date.now();
+
+    const queue = eventQueue.get(clientId) ?? [];
+    const newEvents = queue.filter((event) => event.id > lastEventId);
+
+    res.json({ events: newEvents });
+  } catch (error) {
+    console.error('Error handling events:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 /**
  * Example Express Rest API endpoints can be defined here.
  * Uncomment and define endpoints as necessary.
