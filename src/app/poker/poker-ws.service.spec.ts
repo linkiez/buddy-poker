@@ -576,60 +576,69 @@ describe('PokerWsService', () => {
 
   it('should schedule WebSocket retry when connected via HTTP polling', () => {
     vi.useFakeTimers();
+    const originalFetch = (globalThis as any).fetch;
 
-    TestBed.configureTestingModule({
-      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
-    });
+    try {
+      TestBed.configureTestingModule({
+        providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+      });
 
-    const service = TestBed.inject(PokerWsService);
+      const service = TestBed.inject(PokerWsService);
 
-    // Mock fetch for HTTP polling
-    const mockFetch = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({ clientId: 'c1' }),
-    });
-    (globalThis as any).fetch = mockFetch;
+      // Mock fetch for HTTP polling
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ clientId: 'c1' }),
+      });
+      (globalThis as any).fetch = mockFetch;
 
-    // Set up the service in http-polling mode with lastJoin
-    (service as any).currentMode = 'http-polling';
-    (service as any).lastJoin = { roomId: 'room-1', name: 'Dev Ninja' };
-    
-    // Manually trigger the onStatusChange handler with http-polling connected
-    const handlers = (service as any).createTransportHandlers();
-    handlers.onStatusChange('connected');
-    
-    // After connection in http-polling mode, wsRetryTimeoutId should be set
-    const wsRetryTimeoutId = (service as any).wsRetryTimeoutId;
-    expect(wsRetryTimeoutId).not.toBe(null);
-    
-    vi.useRealTimers();
-    vi.restoreAllMocks();
+      // Set up the service in http-polling mode with lastJoin
+      (service as any).currentMode = 'http-polling';
+      (service as any).lastJoin = { roomId: 'room-1', name: 'Dev Ninja' };
+      
+      // Manually trigger the onStatusChange handler with http-polling connected
+      const handlers = (service as any).createTransportHandlers();
+      handlers.onStatusChange('connected');
+      
+      // After connection in http-polling mode, wsRetryTimeoutId should be set
+      const wsRetryTimeoutId = (service as any).wsRetryTimeoutId;
+      expect(wsRetryTimeoutId).not.toBe(null);
+    } finally {
+      vi.useRealTimers();
+      (globalThis as any).fetch = originalFetch;
+      vi.restoreAllMocks();
+    }
   });
 
   it('should not switch to HTTP polling when already in http-polling mode', () => {
-    TestBed.configureTestingModule({
-      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
-    });
+    const originalFetch = (globalThis as any).fetch;
 
-    const service = TestBed.inject(PokerWsService);
+    try {
+      TestBed.configureTestingModule({
+        providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+      });
 
-    // Mock fetch for HTTP polling
-    const mockFetch = vi.fn();
-    (globalThis as any).fetch = mockFetch;
-    
-    mockFetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ clientId: 'c1' }),
-    });
+      const service = TestBed.inject(PokerWsService);
 
-    // Manually switch to HTTP polling
-    (service as any).currentMode = 'http-polling';
-    (service as any).switchToHttpPolling();
-    
-    // Should return early without creating transport
-    expect((service as any).currentMode).toBe('http-polling');
-    
-    vi.restoreAllMocks();
+      // Mock fetch for HTTP polling
+      const mockFetch = vi.fn();
+      (globalThis as any).fetch = mockFetch;
+      
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ clientId: 'c1' }),
+      });
+
+      // Manually switch to HTTP polling
+      (service as any).currentMode = 'http-polling';
+      (service as any).switchToHttpPolling();
+      
+      // Should return early without creating transport
+      expect((service as any).currentMode).toBe('http-polling');
+    } finally {
+      (globalThis as any).fetch = originalFetch;
+      vi.restoreAllMocks();
+    }
   });
 
   it('should call getEnvNumber and handle missing window', () => {
