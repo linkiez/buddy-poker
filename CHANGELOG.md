@@ -1,3 +1,15 @@
+# [1.2.0](https://github.com/linkiez/buddy-poker/compare/v1.1.0...v1.2.0) (2026-01-12)
+
+
+### Bug Fixes
+
+* address code review feedback ([b3892b1](https://github.com/linkiez/buddy-poker/commit/b3892b18ad9091ec2ae310f2d78dd3c71b6a79db))
+
+
+### Features
+
+* implement WebSocket to HTTP fallback mechanism ([f412a51](https://github.com/linkiez/buddy-poker/commit/f412a51b2c8e6a00fa369f149ba7495082962a38))
+
 # [1.1.0](https://github.com/linkiez/buddy-poker/compare/v1.0.3...v1.1.0) (2026-01-08)
 
 
