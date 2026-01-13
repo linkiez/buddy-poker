@@ -71,4 +71,120 @@ describe('parsePokerWsMessageFromClient', () => {
   it('should return null for unknown types', () => {
     expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'nope' }))).toBeNull();
   });
+
+  it('should parse webrtc-join message (without token)', () => {
+    expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-join', roomId: 'r' }))).toEqual({
+      type: 'webrtc-join',
+      roomId: 'r',
+    });
+  });
+
+  it('should parse webrtc-join message (with token)', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-join', roomId: 'r', token: 't' })),
+    ).toEqual({
+      type: 'webrtc-join',
+      roomId: 'r',
+      token: 't',
+    });
+  });
+
+  it('should ignore non-string token on webrtc-join', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-join', roomId: 'r', token: 123 })),
+    ).toEqual({
+      type: 'webrtc-join',
+      roomId: 'r',
+    });
+  });
+
+  it('should return null for invalid webrtc-join payload', () => {
+    expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-join', roomId: 123 }))).toBeNull();
+    expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-join' }))).toBeNull();
+  });
+
+  it('should parse webrtc-offer message', () => {
+    const offer = { type: 'offer', sdp: 'mock-sdp' };
+    expect(
+      parsePokerWsMessageFromClient(
+        JSON.stringify({ type: 'webrtc-offer', roomId: 'r', targetPeerId: 'peer1', offer }),
+      ),
+    ).toEqual({
+      type: 'webrtc-offer',
+      roomId: 'r',
+      targetPeerId: 'peer1',
+      offer,
+    });
+  });
+
+  it('should return null for invalid webrtc-offer payload', () => {
+    const offer = { type: 'offer', sdp: 'mock-sdp' };
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-offer', roomId: 123, targetPeerId: 'p', offer })),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-offer', roomId: 'r', targetPeerId: 123, offer })),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-offer', roomId: 'r', targetPeerId: 'p' })),
+    ).toBeNull();
+  });
+
+  it('should parse webrtc-answer message', () => {
+    const answer = { type: 'answer', sdp: 'mock-sdp' };
+    expect(
+      parsePokerWsMessageFromClient(
+        JSON.stringify({ type: 'webrtc-answer', roomId: 'r', targetPeerId: 'peer1', answer }),
+      ),
+    ).toEqual({
+      type: 'webrtc-answer',
+      roomId: 'r',
+      targetPeerId: 'peer1',
+      answer,
+    });
+  });
+
+  it('should return null for invalid webrtc-answer payload', () => {
+    const answer = { type: 'answer', sdp: 'mock-sdp' };
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-answer', roomId: 123, targetPeerId: 'p', answer })),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-answer', roomId: 'r', targetPeerId: 123, answer })),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-answer', roomId: 'r', targetPeerId: 'p' })),
+    ).toBeNull();
+  });
+
+  it('should parse webrtc-ice-candidate message', () => {
+    const candidate = { candidate: 'mock-candidate', sdpMid: '0', sdpMLineIndex: 0 };
+    expect(
+      parsePokerWsMessageFromClient(
+        JSON.stringify({ type: 'webrtc-ice-candidate', roomId: 'r', targetPeerId: 'peer1', candidate }),
+      ),
+    ).toEqual({
+      type: 'webrtc-ice-candidate',
+      roomId: 'r',
+      targetPeerId: 'peer1',
+      candidate,
+    });
+  });
+
+  it('should return null for invalid webrtc-ice-candidate payload', () => {
+    const candidate = { candidate: 'mock-candidate', sdpMid: '0', sdpMLineIndex: 0 };
+    expect(
+      parsePokerWsMessageFromClient(
+        JSON.stringify({ type: 'webrtc-ice-candidate', roomId: 123, targetPeerId: 'p', candidate }),
+      ),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(
+        JSON.stringify({ type: 'webrtc-ice-candidate', roomId: 'r', targetPeerId: 123, candidate }),
+      ),
+    ).toBeNull();
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'webrtc-ice-candidate', roomId: 'r', targetPeerId: 'p' })),
+    ).toBeNull();
+  });
 });
