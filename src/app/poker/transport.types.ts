@@ -2,7 +2,7 @@ import type { PokerClientMessage, PokerServerMessage } from './poker-types';
 
 export type TransportStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting';
 
-export type TransportMode = 'websocket' | 'http-polling';
+export type TransportMode = 'webrtc' | 'websocket' | 'http-polling';
 
 export interface TransportConfig {
   reconnectMaxAttempts?: number;
