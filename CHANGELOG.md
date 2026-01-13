@@ -1,3 +1,13 @@
+# [1.4.0](https://github.com/linkiez/buddy-poker/compare/v1.3.0...v1.4.0) (2026-01-13)
+
+
+### Features
+
+* add P2P transport mode indicator in UI ([ba3f94f](https://github.com/linkiez/buddy-poker/commit/ba3f94f3bd861924fbdbd4e91ebd5bf1e8b77557))
+* implement P2P WebRTC Phase 5 (TURN infrastructure) ([0e3bf20](https://github.com/linkiez/buddy-poker/commit/0e3bf20c12815556298a64a87807804d6e0b5179))
+* implement P2P WebRTC Phase 6 (E2E tests) - ALL PHASES COMPLETE ([f665dc0](https://github.com/linkiez/buddy-poker/commit/f665dc05add4eb45d988577087924b066c649ede))
+* implement P2P WebRTC Phases 1-4 (signaling, transport, mesh, fallback) ([d54cb46](https://github.com/linkiez/buddy-poker/commit/d54cb46bf944db0ad6c524daef98f0ab3b2c192b))
+
 # [1.3.0](https://github.com/linkiez/buddy-poker/compare/v1.2.0...v1.3.0) (2026-01-12)
 
 
