@@ -149,6 +149,24 @@ Docs detalhadas em:
 - `src/poker-permissions.doc.md`
 - `src/room-token.doc.md`
 
+### P2P WebRTC (Proposta)
+
+**Status**: 📋 Planejado — não implementado ainda.
+
+Estamos planejando adicionar um modo **P2P (peer-to-peer)** usando WebRTC DataChannel para comunicação direta entre participantes, reduzindo carga no servidor e latência.
+
+**Características planejadas:**
+- Comunicação P2P direta entre até 8 participantes (topologia mesh)
+- Fallback automático para WebSocket/HTTP quando P2P não estiver disponível
+- Suporte para redes restritas via TURN server (coturn)
+- Servidor continua como sinalizador e autoridade do estado
+
+**Documentação:**
+- Design completo: [docs/p2p-webrtc-design.doc.md](docs/p2p-webrtc-design.doc.md)
+- Roadmap de implementação: [ROADMAP.md](ROADMAP.md#p2p-webrtc-mode-roadmap-completo)
+
+O modo P2P será **opcional** e **transparente** — o app continuará funcionando normalmente em WebSocket/HTTP para usuários que não suportam ou não podem usar P2P.
+
 ## Docker
 
 ### Build e run
