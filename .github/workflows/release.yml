@@ -46,7 +46,7 @@ jobs:
       - name: Unit tests
         run: corepack yarn test
 
-      - name: Coverage gate (100%)
+      - name: Coverage gate (>= 95%)
         run: corepack yarn test:coverage:check
 
       - name: Install Playwright browsers
