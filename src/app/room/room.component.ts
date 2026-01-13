@@ -87,7 +87,7 @@ export class RoomComponent implements OnInit, OnDestroy {
   protected connectionStatus = signal<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>(
     'disconnected',
   );
-  protected transportMode = signal<'websocket' | 'http-polling' | null>(null);
+  protected transportMode = signal<'webrtc' | 'websocket' | 'http-polling' | null>(null);
 
   protected isOwner = computed(() => {
     const state = this.state();
@@ -122,7 +122,9 @@ export class RoomComponent implements OnInit, OnDestroy {
 
   protected transportModeLabel = computed(() => {
     const mode = this.transportMode();
-    if (mode === 'websocket') {
+    if (mode === 'webrtc') {
+      return 'P2P';
+    } else if (mode === 'websocket') {
       return 'WebSocket';
     } else if (mode === 'http-polling') {
       return 'HTTP';
@@ -140,6 +142,18 @@ export class RoomComponent implements OnInit, OnDestroy {
       default:
         return 'danger';
     }
+  });
+
+  protected transportModeSeverity = computed<'success' | 'secondary' | 'warn'>(() => {
+    const mode = this.transportMode();
+    if (mode === 'webrtc') {
+      return 'success';  // Green for P2P (best)
+    } else if (mode === 'websocket') {
+      return 'secondary';  // Gray for WebSocket (good)
+    } else if (mode === 'http-polling') {
+      return 'warn';  // Yellow for HTTP (fallback)
+    }
+    return 'secondary';
   });
 
   private readonly subs = new Subscription();
