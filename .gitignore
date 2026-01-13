@@ -54,3 +54,8 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# TURN Server certificates (sensitive - never commit)
+coturn/certs/*.pem
+coturn/certs/*.key
+coturn/certs/*.crt
