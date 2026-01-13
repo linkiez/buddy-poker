@@ -17,8 +17,8 @@
         <span *ngIf="isJoined() && transportModeLabel()">·</span>
         <p-tag
           *ngIf="isJoined() && transportModeLabel()"
-          [value]="'Realtime: ' + transportModeLabel()"
-          severity="secondary"
+          [value]="transportModeLabel()!"
+          [severity]="transportModeSeverity()"
           [rounded]="true"
         />
         <span *ngIf="state()?.reveal">· votos revelados</span>

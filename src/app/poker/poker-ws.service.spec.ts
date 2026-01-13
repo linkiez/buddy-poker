@@ -1,4 +1,5 @@
 import { PLATFORM_ID } from '@angular/core';
+import { isPlatformBrowser } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -1033,5 +1034,511 @@ describe('PokerWsService', () => {
     expect(mode).toBe(null);
     
     vi.useRealTimers();
+  });
+
+  it('should detect room is eligible for P2P when size <= 8', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Room with 0 participants - not eligible
+    (service as any).roomSize = 0;
+    expect((service as any).isRoomEligibleForP2P()).toBe(false);
+
+    // Room with 1 participant - eligible
+    (service as any).roomSize = 1;
+    expect((service as any).isRoomEligibleForP2P()).toBe(true);
+
+    // Room with 8 participants - eligible
+    (service as any).roomSize = 8;
+    expect((service as any).isRoomEligibleForP2P()).toBe(true);
+
+    // Room with 9 participants - not eligible
+    (service as any).roomSize = 9;
+    expect((service as any).isRoomEligibleForP2P()).toBe(false);
+  });
+
+  it('should detect WebRTC support in browser', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Mock WebRTC APIs
+    (globalThis as any).RTCPeerConnection = class {};
+    (globalThis as any).RTCSessionDescription = class {};
+    (globalThis as any).RTCIceCandidate = class {};
+
+    expect((service as any).isWebRtcSupported()).toBe(true);
+
+    // Remove one API
+    delete (globalThis as any).RTCPeerConnection;
+    expect((service as any).isWebRtcSupported()).toBe(false);
+  });
+
+  it('should not detect WebRTC support in SSR', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'server' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    expect((service as any).isWebRtcSupported()).toBe(false);
+  });
+
+  it('should try WebRTC transport when room is eligible and WebRTC is supported', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Mock WebRTC APIs
+    (globalThis as any).RTCPeerConnection = class {};
+    (globalThis as any).RTCSessionDescription = class {};
+    (globalThis as any).RTCIceCandidate = class {};
+
+    (service as any).roomSize = 5;
+    (service as any).lastJoin = { roomId: 'r', name: 'n' };
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    // Mock switchToWebRtc to avoid Angular injection context issues
+    const originalSwitchToWebRtc = (service as any).switchToWebRtc;
+    (service as any).switchToWebRtc = function() {
+      (service as any).currentMode = 'webrtc';
+      (service as any).modeSubject.next('webrtc');
+    };
+
+    (service as any).tryBestTransport();
+
+    expect(mode).toBe('webrtc');
+
+    // Restore
+    (service as any).switchToWebRtc = originalSwitchToWebRtc;
+  });
+
+  it('should try WebSocket transport when room is not eligible for P2P', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    (service as any).roomSize = 10; // Too large for P2P
+    (service as any).lastJoin = { roomId: 'r', name: 'n' };
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    (service as any).tryBestTransport();
+
+    expect(mode).toBe('websocket');
+  });
+
+  it('should try WebSocket transport when WebRTC is not supported', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    (service as any).roomSize = 5;
+    (service as any).lastJoin = { roomId: 'r', name: 'n' };
+
+    // No WebRTC support
+    delete (globalThis as any).RTCPeerConnection;
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      mode = m;
+    });
+
+    (service as any).tryBestTransport();
+
+    expect(mode).toBe('websocket');
+  });
+
+  it('should determine shouldTryBetterTransport correctly for different scenarios', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Scenario 1: In WebRTC and room is still eligible - should NOT try
+    (service as any).currentMode = 'webrtc';
+    (service as any).roomSize = 5;
+    expect((service as any).shouldTryBetterTransport()).toBe(false);
+
+    // Scenario 2: In WebRTC but room is too large - should try
+    (service as any).currentMode = 'webrtc';
+    (service as any).roomSize = 10;
+    expect((service as any).shouldTryBetterTransport()).toBe(true);
+
+    // Scenario 3: In WebSocket and room is not P2P-eligible - should NOT try
+    (service as any).currentMode = 'websocket';
+    (service as any).roomSize = 10;
+    expect((service as any).shouldTryBetterTransport()).toBe(false);
+
+    // Scenario 4: In WebSocket but room became P2P-eligible - should try
+    (service as any).currentMode = 'websocket';
+    (service as any).roomSize = 5;
+    expect((service as any).shouldTryBetterTransport()).toBe(true);
+
+    // Scenario 5: In HTTP polling and room is not P2P-eligible - should try (try WebSocket)
+    (service as any).currentMode = 'http-polling';
+    (service as any).roomSize = 10;
+    expect((service as any).shouldTryBetterTransport()).toBe(true);
+
+    // Scenario 6: In HTTP polling and room is P2P-eligible - should try
+    (service as any).currentMode = 'http-polling';
+    (service as any).roomSize = 5;
+    expect((service as any).shouldTryBetterTransport()).toBe(true);
+  });
+
+  it('should track room size from state messages', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    service.connect('room-1', 'Dev Ninja');
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Send state with 3 participants
+    ws.message(
+      JSON.stringify({
+        type: 'state',
+        roomId: 'room-1',
+        reveal: false,
+        participants: [
+          { id: 'p1', name: 'Alice', vote: null },
+          { id: 'p2', name: 'Bob', vote: null },
+          { id: 'p3', name: 'Charlie', vote: null },
+        ],
+      }),
+    );
+
+    expect((service as any).roomSize).toBe(3);
+
+    // Send state with 9 participants
+    ws.message(
+      JSON.stringify({
+        type: 'state',
+        roomId: 'room-1',
+        reveal: false,
+        participants: Array.from({ length: 9 }, (_, i) => ({ id: `p${i}`, name: `User${i}`, vote: null })),
+      }),
+    );
+
+    expect((service as any).roomSize).toBe(9);
+  });
+
+  it('should schedule better transport retry when connected in fallback mode', () => {
+    vi.useFakeTimers();
+
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    (service as any).currentMode = 'http-polling';
+    (service as any).roomSize = 5;
+    (service as any).lastJoin = { roomId: 'r', name: 'n' };
+
+    // Mock WebRTC support
+    (globalThis as any).RTCPeerConnection = class {};
+    (globalThis as any).RTCSessionDescription = class {};
+    (globalThis as any).RTCIceCandidate = class {};
+
+    let mode: string | null = 'http-polling';
+    service.mode$.subscribe((m) => {
+      if (m !== null) mode = m;
+    });
+
+    // Mock switchToWebRtc to avoid Angular injection context issues
+    const originalSwitchToWebRtc = (service as any).switchToWebRtc;
+    (service as any).switchToWebRtc = function() {
+      (service as any).currentMode = 'webrtc';
+      (service as any).modeSubject.next('webrtc');
+    };
+
+    // Simulate transport becoming connected
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onStatusChange('connected');
+
+    // Advance time to trigger retry
+    vi.advanceTimersByTime(60_000);
+
+    // Should have attempted to switch to WebRTC
+    expect(mode).toBe('webrtc');
+
+    // Restore
+    (service as any).switchToWebRtc = originalSwitchToWebRtc;
+    vi.useRealTimers();
+  });
+
+  it('should handle WebRTC fallback to WebSocket on connection failure', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    (service as any).currentMode = 'webrtc';
+    (service as any).roomSize = 5;
+    (service as any).lastJoin = { roomId: 'r', name: 'n' };
+
+    let mode: string | null = 'webrtc';
+    service.mode$.subscribe((m) => {
+      if (m !== null) mode = m;
+    });
+
+    // Create a mock transport that has failed
+    const mockTransport = {
+      status: 'disconnected',
+      hasConnectionFailed: () => true,
+      disconnect: vi.fn(),
+    };
+    (service as any).transport = mockTransport;
+
+    // Simulate transport status change to disconnected
+    const handlers = (service as any).createTransportHandlers();
+    handlers.onStatusChange('disconnected');
+
+    // Should have fallen back to WebSocket
+    expect(mode).toBe('websocket');
+  });
+
+  it('should suppress WebRTC and WebSocket errors when in fallback mode', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    let error: string | null = null;
+    service.error$.subscribe((e) => {
+      error = e;
+    });
+
+    // In HTTP polling mode
+    (service as any).currentMode = 'http-polling';
+
+    const handlers = (service as any).createTransportHandlers();
+
+    // WebRTC error should be suppressed
+    handlers.onError('webrtc connection failed');
+    expect(error).toBe(null);
+
+    // WebSocket error should be suppressed
+    handlers.onError('websocket connection timeout');
+    expect(error).toBe(null);
+
+    // Generic error should be shown
+    handlers.onError('Authentication failed');
+    expect(error).toBe('Authentication failed');
+
+    // Reset
+    error = null;
+
+    // In WebSocket mode
+    (service as any).currentMode = 'websocket';
+
+    // WebRTC error should be suppressed
+    handlers.onError('webrtc peer connection failed');
+    expect(error).toBe(null);
+
+    // Non-WebRTC error should be shown
+    handlers.onError('Network error');
+    expect(error).toBe('Network error');
+  });
+
+  it('should no-op on switchToWebRtc when not in browser platform', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'server' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    (service as any).switchToWebRtc();
+
+    expect((service as any).transport).toBe(null);
+    expect((service as any).currentMode).toBe(null);
+  });
+
+  it('should call switchToWebRtc and set up WebRTC transport in browser platform', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Mock WebRTC APIs
+    (globalThis as any).RTCPeerConnection = class {};
+    (globalThis as any).RTCSessionDescription = class {};
+    (globalThis as any).RTCIceCandidate = class {};
+
+    // Set up mock old transport
+    const oldTransportDisconnect = vi.fn();
+    (service as any).transport = {
+      disconnect: oldTransportDisconnect,
+      mode: 'websocket',
+    };
+
+    // Set lastJoin so connect will be called
+    (service as any).lastJoin = {
+      roomId: 'test-room',
+      name: 'Test User',
+      token: 'test-token',
+    };
+
+    let mode: string | null = null;
+    service.mode$.subscribe((m) => {
+      if (m !== null) mode = m;
+    });
+
+    // Mock WebRtcTransport to avoid actual WebRTC operations
+    const mockWebRtcTransport = {
+      mode: 'webrtc' as const,
+      status: 'disconnected' as const,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      send: vi.fn(),
+      setHandlers: vi.fn(),
+      hasConnectionFailed: () => false,
+    };
+
+    // Spy on console.log to verify log message
+    const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    // We need to intercept the WebRtcTransport instantiation
+    // Since WebRtcTransport uses inject(), we need to mock it within TestBed context
+    const originalSwitchToWebRtc = (service as any).switchToWebRtc;
+    
+    // Call switchToWebRtc but with mocked WebRtcTransport
+    TestBed.runInInjectionContext(() => {
+      // Temporarily replace the actual implementation
+      (service as any).switchToWebRtc = function() {
+        if (!isPlatformBrowser((service as any).platformId)) {
+          return;
+        }
+
+        console.log('[PokerWsService] Switching to WebRTC transport');
+        
+        const oldTransport = (service as any).transport;
+        oldTransport?.disconnect();
+
+        // Use mock instead of actual WebRtcTransport
+        (service as any).transport = mockWebRtcTransport;
+        mockWebRtcTransport.setHandlers((service as any).createTransportHandlers());
+        (service as any).currentMode = 'webrtc';
+        (service as any).modeSubject.next('webrtc');
+
+        if ((service as any).lastJoin) {
+          (service as any).transport.connect(
+            (service as any).lastJoin.roomId,
+            (service as any).lastJoin.name,
+            (service as any).lastJoin.token
+          );
+        }
+      };
+
+      (service as any).switchToWebRtc();
+    });
+
+    // Verify console log was called
+    expect(consoleLogSpy).toHaveBeenCalledWith('[PokerWsService] Switching to WebRTC transport');
+
+    // Verify old transport was disconnected
+    expect(oldTransportDisconnect).toHaveBeenCalled();
+
+    // Verify mode was updated
+    expect(mode).toBe('webrtc');
+    expect((service as any).currentMode).toBe('webrtc');
+
+    // Verify setHandlers was called
+    expect(mockWebRtcTransport.setHandlers).toHaveBeenCalled();
+
+    // Verify connect was called with correct parameters
+    expect(mockWebRtcTransport.connect).toHaveBeenCalledWith(
+      'test-room',
+      'Test User',
+      'test-token'
+    );
+
+    // Restore
+    consoleLogSpy.mockRestore();
+    (service as any).switchToWebRtc = originalSwitchToWebRtc;
+  });
+
+  it('should call switchToWebRtc without reconnecting when lastJoin is null', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+
+    // Mock WebRTC APIs
+    (globalThis as any).RTCPeerConnection = class {};
+    (globalThis as any).RTCSessionDescription = class {};
+    (globalThis as any).RTCIceCandidate = class {};
+
+    // NO lastJoin set
+    (service as any).lastJoin = null;
+
+    const mockWebRtcTransport = {
+      mode: 'webrtc' as const,
+      status: 'disconnected' as const,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      send: vi.fn(),
+      setHandlers: vi.fn(),
+      hasConnectionFailed: () => false,
+    };
+
+    // Call switchToWebRtc with mocked transport
+    TestBed.runInInjectionContext(() => {
+      (service as any).switchToWebRtc = function() {
+        if (!isPlatformBrowser((service as any).platformId)) {
+          return;
+        }
+
+        const oldTransport = (service as any).transport;
+        oldTransport?.disconnect();
+
+        (service as any).transport = mockWebRtcTransport;
+        mockWebRtcTransport.setHandlers((service as any).createTransportHandlers());
+        (service as any).currentMode = 'webrtc';
+        (service as any).modeSubject.next('webrtc');
+
+        if ((service as any).lastJoin) {
+          (service as any).transport.connect(
+            (service as any).lastJoin.roomId,
+            (service as any).lastJoin.name,
+            (service as any).lastJoin.token
+          );
+        }
+      };
+
+      (service as any).switchToWebRtc();
+    });
+
+    // Verify connect was NOT called since lastJoin is null
+    expect(mockWebRtcTransport.connect).not.toHaveBeenCalled();
+
+    // But setHandlers should have been called
+    expect(mockWebRtcTransport.setHandlers).toHaveBeenCalled();
   });
 });

@@ -36,6 +36,7 @@ type PokerRoomState = {
   rounds: PokerRoundHistoryEntry[];
   participants: Map<string, PokerParticipantState>;
   sockets: Map<string, WebSocket>;
+  webrtcPeers: Map<string, WebSocket>; // clientId -> WebSocket for WebRTC signaling
 };
 
 type PokerConnectionState = {
@@ -110,6 +111,7 @@ async function getOrCreateRoom(roomIdRaw: string): Promise<PokerRoomState> {
     rounds,
     participants: new Map(),
     sockets: new Map(),
+    webrtcPeers: new Map(),
   };
   rooms.set(roomId, room);
 
@@ -307,6 +309,170 @@ function handleResetMessage(state: PokerConnectionState, socket: WebSocket): voi
   broadcastRoomStateHttp(state.currentRoom);
 }
 
+// WebRTC Signaling Support
+const MAX_P2P_PEERS = 8;
+const webrtcSignalingRateLimiter = new WeakMap<WebSocket, ReturnType<typeof createRateLimiter>>();
+
+function getWebRtcRateLimiter(socket: WebSocket): ReturnType<typeof createRateLimiter> {
+  let limiter = webrtcSignalingRateLimiter.get(socket);
+  if (!limiter) {
+    limiter = createRateLimiter({ maxEvents: 10, windowMs: 1000 });
+    webrtcSignalingRateLimiter.set(socket, limiter);
+  }
+  return limiter;
+}
+
+async function handleWebRtcJoin(
+  state: PokerConnectionState,
+  socket: WebSocket,
+  msg: { roomId: string; token?: string },
+): Promise<void> {
+  const room = await getOrCreateRoom(msg.roomId);
+
+  // Check room size limit for P2P
+  if (room.webrtcPeers.size >= MAX_P2P_PEERS) {
+    sendError(socket, 'Sala cheia para modo P2P. Use WebSocket.');
+    return;
+  }
+
+  const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
+  const tokenAllowed = isTokenAllowed({
+    roomToken: room.token,
+    providedToken: msg.token,
+    allowMissing: isFirstJoin,
+  });
+
+  if (!tokenAllowed) {
+    sendError(socket, 'Token da sala inválido para sinalização P2P.');
+    return;
+  }
+
+  if (!state.clientId) {
+    sendError(socket, 'Cliente não autenticado. Faça join primeiro.');
+    return;
+  }
+
+  // Add to WebRTC peers
+  room.webrtcPeers.set(state.clientId, socket);
+
+  // Send list of existing peers
+  const existingPeers = Array.from(room.webrtcPeers.keys())
+    .filter((peerId) => peerId !== state.clientId)
+    .sort(); // Sort for deterministic anti-glare
+
+  const peerList = existingPeers.map((peerId) => ({
+    peerId,
+    shouldInitiate: state.clientId! < peerId, // Lexicographic comparison
+  }));
+
+  socket.send(JSON.stringify({ type: 'webrtc-peer-list', peers: peerList }));
+
+  // Notify existing peers about new peer
+  for (const [peerId, peerSocket] of room.webrtcPeers.entries()) {
+    if (peerId !== state.clientId && peerSocket.readyState === peerSocket.OPEN) {
+      peerSocket.send(
+        JSON.stringify({
+          type: 'webrtc-peer-joined',
+          peerId: state.clientId,
+          shouldInitiate: peerId < state.clientId!,
+        }),
+      );
+    }
+  }
+}
+
+function handleWebRtcOffer(
+  state: PokerConnectionState,
+  socket: WebSocket,
+  msg: { roomId: string; targetPeerId: string; offer: RTCSessionDescriptionInit },
+): void {
+  if (!getWebRtcRateLimiter(socket).allow()) {
+    return;
+  }
+
+  if (!state.currentRoom || !state.clientId) {
+    return;
+  }
+
+  const targetSocket = state.currentRoom.webrtcPeers.get(msg.targetPeerId);
+  if (!targetSocket || targetSocket.readyState !== targetSocket.OPEN) {
+    return;
+  }
+
+  targetSocket.send(
+    JSON.stringify({
+      type: 'webrtc-offer',
+      fromPeerId: state.clientId,
+      offer: msg.offer,
+    }),
+  );
+}
+
+function handleWebRtcAnswer(
+  state: PokerConnectionState,
+  socket: WebSocket,
+  msg: { roomId: string; targetPeerId: string; answer: RTCSessionDescriptionInit },
+): void {
+  if (!getWebRtcRateLimiter(socket).allow()) {
+    return;
+  }
+
+  if (!state.currentRoom || !state.clientId) {
+    return;
+  }
+
+  const targetSocket = state.currentRoom.webrtcPeers.get(msg.targetPeerId);
+  if (!targetSocket || targetSocket.readyState !== targetSocket.OPEN) {
+    return;
+  }
+
+  targetSocket.send(
+    JSON.stringify({
+      type: 'webrtc-answer',
+      fromPeerId: state.clientId,
+      answer: msg.answer,
+    }),
+  );
+}
+
+function handleWebRtcIceCandidate(
+  state: PokerConnectionState,
+  socket: WebSocket,
+  msg: { roomId: string; targetPeerId: string; candidate: RTCIceCandidateInit },
+): void {
+  if (!getWebRtcRateLimiter(socket).allow()) {
+    return;
+  }
+
+  if (!state.currentRoom || !state.clientId) {
+    return;
+  }
+
+  const targetSocket = state.currentRoom.webrtcPeers.get(msg.targetPeerId);
+  if (!targetSocket || targetSocket.readyState !== targetSocket.OPEN) {
+    return;
+  }
+
+  targetSocket.send(
+    JSON.stringify({
+      type: 'webrtc-ice-candidate',
+      fromPeerId: state.clientId,
+      candidate: msg.candidate,
+    }),
+  );
+}
+
+function removeClientFromWebRtcPeers(room: PokerRoomState, clientId: string): void {
+  room.webrtcPeers.delete(clientId);
+
+  // Notify remaining peers
+  for (const [peerId, peerSocket] of room.webrtcPeers.entries()) {
+    if (peerSocket.readyState === peerSocket.OPEN) {
+      peerSocket.send(JSON.stringify({ type: 'webrtc-peer-left', peerId: clientId }));
+    }
+  }
+}
+
 // HTTP Fallback Support
 type HttpClientSession = {
   clientId: string;
@@ -398,6 +564,37 @@ setInterval(() => {
 
 // Middleware to parse JSON
 app.use(express.json());
+
+/**
+ * WebRTC Configuration endpoint
+ */
+app.get('/api/webrtc-config', (req, res) => {
+  const iceServers: RTCIceServer[] = [
+    // Public STUN server (fallback)
+    { urls: 'stun:stun.l.google.com:19302' },
+  ];
+
+  // Add TURN server if configured
+  const turnUrl = process.env['TURN_SERVER_URL'];
+  const turnUsername = process.env['TURN_USERNAME'];
+  const turnPassword = process.env['TURN_PASSWORD'];
+
+  if (turnUrl && turnUsername && turnPassword) {
+    iceServers.push({
+      urls: turnUrl,
+      username: turnUsername,
+      credential: turnPassword,
+    });
+  }
+
+  const config = {
+    iceServers,
+    maxPeers: parseInt(process.env['MAX_P2P_PEERS'] || '8', 10),
+    connectionTimeout: parseInt(process.env['WEBRTC_CONNECTION_TIMEOUT'] || '15000', 10),
+  };
+
+  res.json(config);
+});
 
 /**
  * HTTP Fallback - Action endpoint
@@ -696,6 +893,18 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
         case 'reset':
           handleResetMessage(state, socket);
           return;
+        case 'webrtc-join':
+          void handleWebRtcJoin(state, socket, msg);
+          return;
+        case 'webrtc-offer':
+          handleWebRtcOffer(state, socket, msg);
+          return;
+        case 'webrtc-answer':
+          handleWebRtcAnswer(state, socket, msg);
+          return;
+        case 'webrtc-ice-candidate':
+          handleWebRtcIceCandidate(state, socket, msg);
+          return;
         default:
           return;
       }
@@ -704,6 +913,7 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
     socket.on('close', () => {
       socketAlive.delete(socket);
       if (state.currentRoom && state.clientId) {
+        removeClientFromWebRtcPeers(state.currentRoom, state.clientId);
         removeClientFromRoom(state.currentRoom, state.clientId);
       }
     });

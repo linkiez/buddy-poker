@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      - TURN_SERVER_URL=turns:coturn:443
+      - TURN_USERNAME=buddypoker
+      - TURN_PASSWORD=change-me-in-production
+      - STUN_SERVER_URL=stun:stun.l.google.com:19302
+      - MAX_P2P_PEERS=8
+      - WEBRTC_CONNECTION_TIMEOUT=15000
+    depends_on:
+      - coturn
+    networks:
+      - buddy-poker-network
+
+  coturn:
+    image: coturn/coturn:latest
+    ports:
+      - "3478:3478/udp"     # TURN UDP
+      - "3478:3478/tcp"     # TURN TCP
+      - "443:443/tcp"       # TURN over TLS (turns:)
+      - "49152-65535:49152-65535/udp"  # TURN relay ports
+    volumes:
+      - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+      - ./coturn/certs:/etc/coturn/certs:ro
+    restart: unless-stopped
+    command: ["-c", "/etc/coturn/turnserver.conf", "-v"]
+    networks:
+      - buddy-poker-network
+
+networks:
+  buddy-poker-network:
+    driver: bridge

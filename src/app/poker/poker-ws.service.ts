@@ -9,6 +9,7 @@ import type {
 import type { Transport, TransportEventHandlers, TransportStatus, TransportMode } from './transport.types';
 import { WebSocketTransport } from './websocket-transport';
 import { HttpPollingTransport } from './http-polling-transport';
+import { WebRtcTransport } from './webrtc-transport';
 
 type PokerWsConnectionStatus =
   | 'disconnected'
@@ -27,10 +28,11 @@ export class PokerWsService {
   private roomId: string | null = null;
   private roomToken: string | null = null;
   private currentMode: TransportMode | null = null;
+  private roomSize = 0; // Track room size for P2P eligibility
 
   private lastJoin: { roomId: string; name: string; token?: string } | null = null;
   private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
-  private wsRetryIntervalMs = 60_000; // Try to return to WebSocket every 60 seconds
+  private wsRetryIntervalMs = 60_000; // Try to return to better transport every 60 seconds
 
   private readonly clientIdSubject = new BehaviorSubject<string | null>(null);
   private readonly roomTokenSubject = new BehaviorSubject<string | null>(null);
@@ -85,9 +87,9 @@ export class PokerWsService {
     this.lastJoin = { roomId, name, ...(token ? { token } : {}) };
     this.clearWsRetryTimeout();
 
-    // Try WebSocket first
-    if (!this.transport || this.currentMode !== 'websocket') {
-      this.switchToWebSocket();
+    // Try WebRTC first (if room size <= 8), then WebSocket, then HTTP
+    if (!this.transport || this.shouldTryBetterTransport()) {
+      this.tryBestTransport();
     }
 
     this.transport?.connect(roomId, name, token);
@@ -139,6 +141,16 @@ export class PokerWsService {
       onStatusChange: (status: TransportStatus) => {
         this.statusSubject.next(status);
 
+        // If WebRTC failed, fallback to WebSocket
+        if (
+          this.currentMode === 'webrtc' &&
+          status === 'disconnected' &&
+          this.transport?.hasConnectionFailed?.()
+        ) {
+          console.warn('[PokerWsService] WebRTC failed, switching to WebSocket');
+          this.switchToWebSocket();
+        }
+
         // If WebSocket failed to connect after attempts, fallback to HTTP
         if (
           this.currentMode === 'websocket' &&
@@ -149,9 +161,9 @@ export class PokerWsService {
           this.switchToHttpPolling();
         }
 
-        // Schedule retry to WebSocket if we're in HTTP mode and connected
-        if (this.currentMode === 'http-polling' && status === 'connected') {
-          this.scheduleWsRetry();
+        // Schedule retry to better transport if we're in a fallback mode and connected
+        if ((this.currentMode === 'http-polling' || this.currentMode === 'websocket') && status === 'connected') {
+          this.scheduleBetterTransportRetry();
         }
       },
       onMessage: (message: PokerServerMessage) => {
@@ -161,12 +173,10 @@ export class PokerWsService {
         // Log all errors to console for debugging
         console.error('[PokerWsService] Transport error:', error);
 
-        // When we're in HTTP polling mode, only suppress WebSocket-related transition errors.
-        // Genuine HTTP polling errors (auth failures, network issues, etc.) should still be shown in the UI.
-        if (this.currentMode === 'http-polling') {
+        // When we're in fallback mode, suppress errors from previous transport attempts
+        if (this.currentMode === 'http-polling' || this.currentMode === 'websocket') {
           const normalizedError = (error || '').toLowerCase();
-          // Suppress only if the error clearly refers to WebSocket issues during fallback.
-          if (normalizedError.includes('websocket') || normalizedError.includes('web socket')) {
+          if (normalizedError.includes('webrtc') || normalizedError.includes('websocket') || normalizedError.includes('web socket')) {
             return;
           }
         }
@@ -195,8 +205,34 @@ export class PokerWsService {
     if (msg.type === 'state') {
       const state = msg as PokerRoomViewState;
       if (typeof state.roomId === 'string') {
+        this.roomSize = state.participants.length;
         this.stateSubject.next(state);
       }
+    }
+  }
+
+  private switchToWebRtc(): void {
+    if (!isPlatformBrowser(this.platformId)) {
+      return;
+    }
+
+    console.log('[PokerWsService] Switching to WebRTC transport');
+    
+    const oldTransport = this.transport;
+    oldTransport?.disconnect();
+
+    this.transport = new WebRtcTransport();
+    (this.transport as WebRtcTransport).setHandlers(this.createTransportHandlers());
+    this.currentMode = 'webrtc';
+    this.modeSubject.next('webrtc');
+
+    // Reconnect if we had a previous session
+    if (this.lastJoin) {
+      this.transport.connect(
+        this.lastJoin.roomId,
+        this.lastJoin.name,
+        this.lastJoin.token
+      );
     }
   }
 
@@ -266,6 +302,63 @@ export class PokerWsService {
         this.switchToWebSocket();
       }
     }, this.wsRetryIntervalMs);
+  }
+
+  private scheduleBetterTransportRetry(): void {
+    this.clearWsRetryTimeout();
+
+    this.wsRetryTimeoutId = setTimeout(() => {
+      if (this.lastJoin && this.shouldTryBetterTransport()) {
+        console.log('[PokerWsService] Attempting to switch to better transport...');
+        this.tryBestTransport();
+      }
+    }, this.wsRetryIntervalMs);
+  }
+
+  private shouldTryBetterTransport(): boolean {
+    // If we're in WebRTC and room is still eligible, stay
+    if (this.currentMode === 'webrtc' && this.isRoomEligibleForP2P()) {
+      return false;
+    }
+
+    // If we're in WebSocket and room is not P2P-eligible, stay
+    if (this.currentMode === 'websocket' && !this.isRoomEligibleForP2P()) {
+      return false;
+    }
+
+    // If we're in HTTP and room is not P2P-eligible, try WebSocket
+    if (this.currentMode === 'http-polling' && !this.isRoomEligibleForP2P()) {
+      return true;
+    }
+
+    // Otherwise, try better transport
+    return true;
+  }
+
+  private isRoomEligibleForP2P(): boolean {
+    return this.roomSize > 0 && this.roomSize <= 8;
+  }
+
+  private tryBestTransport(): void {
+    // Try WebRTC if room is eligible
+    if (this.isRoomEligibleForP2P() && this.isWebRtcSupported()) {
+      this.switchToWebRtc();
+    } else {
+      // Otherwise try WebSocket
+      this.switchToWebSocket();
+    }
+  }
+
+  private isWebRtcSupported(): boolean {
+    if (!isPlatformBrowser(this.platformId)) {
+      return false;
+    }
+
+    return !!(
+      window.RTCPeerConnection &&
+      window.RTCSessionDescription &&
+      window.RTCIceCandidate
+    );
   }
 
   private clearWsRetryTimeout(): void {

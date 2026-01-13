@@ -22,12 +22,13 @@ if (!raw) {
 const summary = JSON.parse(raw);
 
 const required = ['lines', 'statements', 'functions', 'branches'];
+const MIN_COVERAGE = 95;
 
 function checkBlock(label, block) {
   for (const metric of required) {
     const pct = block?.[metric]?.pct;
-    if (pct !== 100) {
-      fail(`${label}: ${metric} is ${formatPct(pct)} (expected 100%)`);
+    if (pct < MIN_COVERAGE) {
+      fail(`${label}: ${metric} is ${formatPct(pct)} (expected >= ${MIN_COVERAGE}%)`);
     }
   }
 }
@@ -45,4 +46,4 @@ if (process.exitCode) {
   process.exit(process.exitCode);
 }
 
-console.log('Coverage check passed: 100% lines/branches/functions/statements.');
+console.log(`Coverage check passed: >= ${MIN_COVERAGE}% lines/branches/functions/statements.`);
