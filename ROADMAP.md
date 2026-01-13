@@ -128,10 +128,10 @@ yarn e2e
 
 ## Próximos passos (prioridade baixa)
 
-- [ ] Temas / skins (engraçados, mas sem poluir o app):
-  - [ ] Tema “Café & Caos”.
-  - [ ] Tema “Sprint da Madrugada”.
-- [ ] Deploy:
+- [x] Temas / skins (engraçados, mas sem poluir o app):
+  - [x] Tema “Café & Caos”.
+  - [x] Tema “Sprint da Madrugada”.
+- [x] Deploy:
   - [x] Container/Dockerfile e compose.
   - [x] Config de Reverse proxy (Nginx) com upgrade de WebSocket.
 
@@ -165,295 +165,295 @@ yarn e2e
 
 ---
 
-### Fase 1: Signaling Mínimo
+### Fase 1: Signaling Mínimo ✅
 
-**Objetivo**: Implementar infraestrutura de sinalização no servidor para permitir troca de offers/answers/ICE candidates entre peers.
+**Objetivo**: Implementar infraestrutura de sinalização no servidor para permitir troca of offers/answers/ICE candidates entre peers.
 
 **Tarefas:**
 
-- [ ] **Backend: Mensagens de sinalização WebSocket**
-  - [ ] Adicionar tipos de mensagem: `webrtc-join`, `webrtc-offer`, `webrtc-answer`, `webrtc-ice-candidate`, `webrtc-peer-joined`, `webrtc-peer-left`
-  - [ ] Criar `handleWebRtcJoin(clientId, msg)` no servidor
-    - [ ] Validar token de sala
-    - [ ] Verificar limite de 8 participantes
-    - [ ] Retornar lista de peers existentes
-    - [ ] Notificar peers existentes sobre novo peer (com `shouldInitiate` flag)
-  - [ ] Criar `handleWebRtcOffer/Answer/IceCandidate(clientId, msg)`
-    - [ ] Rotear mensagens para peer de destino (`targetPeerId`)
-    - [ ] Validar que ambos os peers estão na mesma sala
-  - [ ] Criar `handleWebRtcPeerLeft(clientId, roomId)`
-    - [ ] Notificar outros peers quando peer desconecta
+- [x] **Backend: Mensagens de sinalização WebSocket**
+  - [x] Adicionar tipos de mensagem: `webrtc-join`, `webrtc-offer`, `webrtc-answer`, `webrtc-ice-candidate`, `webrtc-peer-joined`, `webrtc-peer-left`
+  - [x] Criar `handleWebRtcJoin(clientId, msg)` no servidor
+    - [x] Validar token de sala
+    - [x] Verificar limite de 8 participantes
+    - [x] Retornar lista de peers existentes
+    - [x] Notificar peers existentes sobre novo peer (com `shouldInitiate` flag)
+  - [x] Criar `handleWebRtcOffer/Answer/IceCandidate(clientId, msg)`
+    - [x] Rotear mensagens para peer de destino (`targetPeerId`)
+    - [x] Validar que ambos os peers estão na mesma sala
+  - [x] Criar `handleWebRtcPeerLeft(clientId, roomId)`
+    - [x] Notificar outros peers quando peer desconecta
 
-- [ ] **Backend: Lógica anti-glare**
-  - [ ] Implementar estratégia de "quem inicia offer" (baseado em peer ID lexicográfico)
-  - [ ] Incluir `shouldInitiate: boolean` em `webrtc-peer-joined`
+- [x] **Backend: Lógica anti-glare**
+  - [x] Implementar estratégia de "quem inicia offer" (baseado em peer ID lexicográfico)
+  - [x] Incluir `shouldInitiate: boolean` em `webrtc-peer-joined`
 
-- [ ] **Backend: Rate limiting de sinalização**
-  - [ ] Aplicar limite de 10 mensagens de sinalização/segundo por cliente
-  - [ ] Log warning se limite excedido
+- [x] **Backend: Rate limiting de sinalização**
+  - [x] Aplicar limite de 10 mensagens de sinalização/segundo por cliente
+  - [x] Log warning se limite excedido
 
-- [ ] **Testes de sinalização**
-  - [ ] Unit tests: validação de token em `webrtc-join`
-  - [ ] Unit tests: roteamento de mensagens entre peers
-  - [ ] Unit tests: limite de 8 participantes
-  - [ ] Unit tests: lógica anti-glare (`shouldInitiate`)
+- [x] **Testes de sinalização**
+  - [x] Unit tests: validação de token em `webrtc-join`
+  - [x] Unit tests: roteamento de mensagens entre peers
+  - [x] Unit tests: limite de 8 participantes
+  - [x] Unit tests: lógica anti-glare (`shouldInitiate`)
 
 **Critérios de aceite:**
-- [ ] Servidor roteia mensagens de sinalização corretamente
-- [ ] Validação de token funciona para sinalização
-- [ ] Limite de 8 participantes é respeitado
-- [ ] Testes cobrem casos principais
-- [ ] `yarn test` passa
+- [x] Servidor roteia mensagens de sinalização corretamente
+- [x] Validação de token funciona para sinalização
+- [x] Limite de 8 participantes é respeitado
+- [x] Testes cobrem casos principais
+- [x] `yarn test` passa
 
 **Estimativa**: 2-3 dias
 
 ---
 
-### Fase 2: WebRtcTransport (Client)
+### Fase 2: WebRtcTransport (Client) ✅
 
 **Objetivo**: Implementar `WebRtcTransport` no cliente para estabelecer conexões P2P via WebRTC DataChannel.
 
 **Tarefas:**
 
-- [ ] **SignalingService (client)**
-  - [ ] Criar `SignalingService` para comunicar com servidor via WS
-  - [ ] Implementar `connect(roomId, token)` → envia `webrtc-join`
-  - [ ] Implementar `sendOffer/Answer/IceCandidate(targetPeerId, ...)`
-  - [ ] Expor observables: `onPeerJoined$`, `onOffer$`, `onAnswer$`, `onIceCandidate$`, `onPeerLeft$`
-  - [ ] Adicionar guards `isPlatformBrowser` (não rodar no SSR)
+- [x] **SignalingService (client)**
+  - [x] Criar `SignalingService` para comunicar com servidor via WS
+  - [x] Implementar `connect(roomId, token)` → envia `webrtc-join`
+  - [x] Implementar `sendOffer/Answer/IceCandidate(targetPeerId, ...)`
+  - [x] Expor observables: `onPeerJoined$`, `onOffer$`, `onAnswer$`, `onIceCandidate$`, `onPeerLeft$`
+  - [x] Adicionar guards `isPlatformBrowser` (não rodar no SSR)
 
-- [ ] **WebRtcTransport (client)**
-  - [ ] Implementar interface `Transport`
-  - [ ] Criar `connect(roomId, name, token?)` → inicia sinalização
-  - [ ] Criar `RTCPeerConnection` para cada peer
-  - [ ] Criar `DataChannel('poker')` para cada peer
-  - [ ] Implementar fluxo de offer/answer:
-    - [ ] Se `shouldInitiate=true`, criar offer
-    - [ ] Se receber offer, criar answer
-  - [ ] Implementar troca de ICE candidates (trickle ICE)
-  - [ ] Implementar detecção de suporte WebRTC (`isWebRtcSupported()`)
-  - [ ] Adicionar timeout de conexão (15s)
-    - [ ] Se timeout, emitir evento `failed`
-  - [ ] Implementar `send(message)` → envia para todos os peers via DataChannel
-  - [ ] Implementar `disconnect()` → fecha todas as conexões
+- [x] **WebRtcTransport (client)**
+  - [x] Implementar interface `Transport`
+  - [x] Criar `connect(roomId, name, token?)` → inicia sinalização
+  - [x] Criar `RTCPeerConnection` para cada peer
+  - [x] Criar `DataChannel('poker')` para cada peer
+  - [x] Implementar fluxo de offer/answer:
+    - [x] Se `shouldInitiate=true`, criar offer
+    - [x] Se receber offer, criar answer
+  - [x] Implementar troca de ICE candidates (trickle ICE)
+  - [x] Implementar detecção de suporte WebRTC (`isWebRtcSupported()`)
+  - [x] Adicionar timeout de conexão (15s)
+    - [x] Se timeout, emitir evento `failed`
+  - [x] Implementar `send(message)` → envia para todos os peers via DataChannel
+  - [x] Implementar `disconnect()` → fecha todas as conexões
 
-- [ ] **WebRTC Configuration**
-  - [ ] Criar endpoint `/api/webrtc-config` no servidor
-    - [ ] Retorna `iceServers` (STUN público por enquanto)
-  - [ ] Cliente busca config antes de criar `RTCPeerConnection`
+- [x] **WebRTC Configuration**
+  - [x] Criar endpoint `/api/webrtc-config` no servidor
+    - [x] Retorna `iceServers` (STUN público por enquanto)
+  - [x] Cliente busca config antes de criar `RTCPeerConnection`
 
-- [ ] **Observables e estado**
-  - [ ] `status$`: emite 'connecting', 'connected', 'disconnected'
-  - [ ] `onMessage$`: emite mensagens recebidas via DataChannel
-  - [ ] `onFailed$`: emite quando P2P falha (para trigger fallback)
+- [x] **Observables e estado**
+  - [x] `status$`: emite 'connecting', 'connected', 'disconnected'
+  - [x] `onMessage$`: emite mensagens recebidas via DataChannel
+  - [x] `onFailed$`: emite quando P2P falha (para trigger fallback)
 
-- [ ] **Testes**
-  - [ ] Unit tests: mock `RTCPeerConnection` e `DataChannel`
-  - [ ] Testar fluxo de offer/answer
-  - [ ] Testar troca de ICE candidates
-  - [ ] Testar timeout de conexão
-  - [ ] Testar envio/recebimento de mensagens
+- [x] **Testes**
+  - [x] Unit tests: mock `RTCPeerConnection` e `DataChannel`
+  - [x] Testar fluxo de offer/answer
+  - [x] Testar troca de ICE candidates
+  - [x] Testar timeout de conexão
+  - [x] Testar envio/recebimento de mensagens
 
 **Critérios de aceite:**
-- [ ] WebRtcTransport estabelece conexões P2P entre 2 peers
-- [ ] DataChannel abre e troca mensagens JSON
-- [ ] Timeout de 15s funciona (fallback se não conectar)
-- [ ] Código só roda no browser (guards SSR funcionam)
-- [ ] `yarn test` passa
+- [x] WebRtcTransport estabelece conexões P2P entre 2 peers
+- [x] DataChannel abre e troca mensagens JSON
+- [x] Timeout de 15s funciona (fallback se não conectar)
+- [x] Código só roda no browser (guards SSR funcionam)
+- [x] `yarn test` passa
 
 **Estimativa**: 4-5 dias
 
 ---
 
-### Fase 3: Mesh Completo (até 8 Peers) + Glare Handling
+### Fase 3: Mesh Completo (até 8 Peers) + Glare Handling ✅
 
 **Objetivo**: Suportar múltiplos peers (até 8) em topologia mesh completa e resolver offer collisions.
 
 **Tarefas:**
 
-- [ ] **Mesh topology**
-  - [ ] WebRtcTransport mantém Map de `peerId → RTCPeerConnection`
-  - [ ] Ao receber `webrtc-peer-joined`, criar nova conexão com novo peer
-  - [ ] Ao receber `webrtc-peer-left`, fechar conexão correspondente
-  - [ ] Broadcast de mensagens: enviar para todos os peers conectados
+- [x] **Mesh topology**
+  - [x] WebRtcTransport mantém Map de `peerId → RTCPeerConnection`
+  - [x] Ao receber `webrtc-peer-joined`, criar nova conexão com novo peer
+  - [x] Ao receber `webrtc-peer-left`, fechar conexão correspondente
+  - [x] Broadcast de mensagens: enviar para todos os peers conectados
 
-- [ ] **Glare handling (offer collision)**
-  - [ ] Implementar lógica: se ambos os peers enviam offer, peer com ID maior descarta seu offer
-  - [ ] Testar cenário de offer collision
+- [x] **Glare handling (offer collision)**
+  - [x] Implementar lógica: se ambos os peers enviam offer, peer com ID maior descarta seu offer
+  - [x] Testar cenário de offer collision
 
-- [ ] **Reconexão de peer**
-  - [ ] Detectar `iceconnectionstatechange` → 'disconnected'
-  - [ ] Aguardar 5s para reconexão automática (ICE restart)
-  - [ ] Se não reconectar, fechar conexão e criar nova via sinalização
+- [x] **Reconexão de peer**
+  - [x] Detectar `iceconnectionstatechange` → 'disconnected'
+  - [x] Aguardar 5s para reconexão automática (ICE restart)
+  - [x] Se não reconectar, fechar conexão e criar nova via sinalização
 
-- [ ] **Qualidade de conexão**
-  - [ ] Monitorar packet loss e RTT via `getStats()`
-  - [ ] Emitir warning se qualidade degradar (packet loss > 10%, RTT > 1000ms)
+- [x] **Qualidade de conexão**
+  - [x] Monitorar packet loss e RTT via `getStats()`
+  - [x] Emitir warning se qualidade degradar (packet loss > 10%, RTT > 1000ms)
 
-- [ ] **Testes**
-  - [ ] Testar mesh com 3+ peers (simular múltiplas conexões)
-  - [ ] Testar glare handling
-  - [ ] Testar reconexão de peer desconectado
-  - [ ] Testar broadcast para múltiplos peers
+- [x] **Testes**
+  - [x] Testar mesh com 3+ peers (simular múltiplas conexões)
+  - [x] Testar glare handling
+  - [x] Testar reconexão de peer desconectado
+  - [x] Testar broadcast para múltiplos peers
 
 **Critérios de aceite:**
-- [ ] Até 8 peers conseguem se conectar em mesh completo
-- [ ] Offer collision é resolvida corretamente
-- [ ] Peer desconectado reconecta ou é removido
-- [ ] Broadcast funciona para todos os peers
-- [ ] `yarn test` passa
+- [x] Até 8 peers conseguem se conectar em mesh completo
+- [x] Offer collision é resolvida corretamente
+- [x] Peer desconectado reconecta ou é removido
+- [x] Broadcast funciona para todos os peers
+- [x] `yarn test` passa
 
 **Estimativa**: 3-4 dias
 
 ---
 
-### Fase 4: Fallback/Return-to-P2P e UX
+### Fase 4: Fallback/Return-to-P2P e UX ✅
 
 **Objetivo**: Integrar WebRtcTransport com PokerWsService, implementar fallback automático e UX de modo de transporte.
 
 **Tarefas:**
 
-- [ ] **Integração com PokerWsService**
-  - [ ] Refatorar PokerWsService para suportar 3 transportes: WebRTC, WebSocket, HTTP
-  - [ ] Lógica de seleção de transporte:
-    - [ ] Verificar tamanho da sala (API ou sinalização)
-    - [ ] Se ≤ 8, tentar WebRTC
-    - [ ] Se > 8 ou WebRTC não suportado, usar WebSocket
-    - [ ] Se WebSocket falhar, usar HTTP
-  - [ ] Expor `mode$: Observable<'webrtc' | 'websocket' | 'http-polling'>`
+- [x] **Integração com PokerWsService**
+  - [x] Refatorar PokerWsService para suportar 3 transportes: WebRTC, WebSocket, HTTP
+  - [x] Lógica de seleção de transporte:
+    - [x] Verificar tamanho da sala (API ou sinalização)
+    - [x] Se ≤ 8, tentar WebRTC
+    - [x] Se > 8 ou WebRTC não suportado, usar WebSocket
+    - [x] Se WebSocket falhar, usar HTTP
+  - [x] Expor `mode$: Observable<'webrtc' | 'websocket' | 'http-polling'>`
 
-- [ ] **Fallback P2P → WebSocket**
-  - [ ] WebRtcTransport emite `failed` após timeout (15s)
-  - [ ] PokerWsService detecta e faz switch para WebSocketTransport
-  - [ ] Log: `[PokerWsService] WebRTC failed, switching to WebSocket`
+- [x] **Fallback P2P → WebSocket**
+  - [x] WebRtcTransport emite `failed` após timeout (15s)
+  - [x] PokerWsService detecta e faz switch para WebSocketTransport
+  - [x] Log: `[PokerWsService] WebRTC failed, switching to WebSocket`
 
-- [ ] **Return-to-P2P (WebSocket → P2P)**
-  - [ ] A cada 60s, se `mode !== 'webrtc'` e `roomSize ≤ 8`, tentar WebRTC
-  - [ ] Iniciar WebRtcTransport em paralelo com transporte atual
-  - [ ] Se conectar em < 15s, fazer switch
-  - [ ] Caso contrário, manter transporte atual e tentar novamente em 60s
+- [x] **Return-to-P2P (WebSocket → P2P)**
+  - [x] A cada 60s, se `mode !== 'webrtc'` e `roomSize ≤ 8`, tentar WebRTC
+  - [x] Iniciar WebRtcTransport em paralelo com transporte atual
+  - [x] Se conectar em < 15s, fazer switch
+  - [x] Caso contrário, manter transporte atual e tentar novamente em 60s
 
-- [ ] **UX: Indicador de modo de transporte**
-  - [ ] Adicionar badge no RoomComponent mostrando modo atual
-  - [ ] Ícones sugeridos:
-    - [ ] P2P: `🔗` ou "P2P"
-    - [ ] WebSocket: `🔌` ou "WS"
-    - [ ] HTTP: `📡` ou "HTTP"
-  - [ ] Cor:
-    - [ ] P2P: verde (melhor)
-    - [ ] WebSocket: amarelo (intermediário)
-    - [ ] HTTP: laranja (fallback)
-  - [ ] Tooltip explicando o modo
+- [x] **UX: Indicador de modo de transporte**
+  - [x] Adicionar badge no RoomComponent mostrando modo atual
+  - [x] Ícones sugeridos:
+    - [x] P2P: `🔗` ou "P2P"
+    - [x] WebSocket: `🔌` ou "WS"
+    - [x] HTTP: `📡` ou "HTTP"
+  - [x] Cor:
+    - [x] P2P: verde (melhor)
+    - [x] WebSocket: amarelo (intermediário)
+    - [x] HTTP: laranja (fallback)
+  - [x] Tooltip explicando o modo
 
-- [ ] **Testes**
-  - [ ] Testar fallback WebRTC → WebSocket
-  - [ ] Testar return-to-P2P (WebSocket → WebRTC)
-  - [ ] Testar sala > 8 usa WebSocket diretamente
-  - [ ] E2E: usuário vê indicador de modo
+- [x] **Testes**
+  - [x] Testar fallback WebRTC → WebSocket
+  - [x] Testar return-to-P2P (WebSocket → WebRTC)
+  - [x] Testar sala > 8 usa WebSocket diretamente
+  - [x] E2E: usuário vê indicador de modo
 
 **Critérios de aceite:**
-- [ ] Fallback automático funciona (P2P → WS → HTTP)
-- [ ] Return-to-P2P funciona (tentativa a cada 60s)
-- [ ] Indicador de modo visível na UI
-- [ ] Salas > 8 usam WebSocket (sem tentar P2P)
-- [ ] `yarn test` e `yarn e2e` passam
+- [x] Fallback automático funciona (P2P → WS → HTTP)
+- [x] Return-to-P2P funciona (tentativa a cada 60s)
+- [x] Indicador de modo visível na UI
+- [x] Salas > 8 usam WebSocket (sem tentar P2P)
+- [x] `yarn test` e `yarn e2e` passam
 
 **Estimativa**: 3-4 dias
 
 ---
 
-### Fase 5: Infraestrutura TURN/Coturn
+### Fase 5: Infraestrutura TURN/Coturn ✅
 
 **Objetivo**: Configurar servidor TURN (coturn) para suportar redes restritas e atualizar docs de deploy.
 
 **Tarefas:**
 
-- [ ] **Coturn setup**
-  - [ ] Criar `docker-compose.turn.yml` com serviço coturn
-  - [ ] Criar `coturn/turnserver.conf` com configuração básica
-    - [ ] `listening-port=3478`
-    - [ ] `tls-listening-port=443`
-    - [ ] `realm=buddy-poker.example.com`
-    - [ ] `user=user:pass` (credenciais para testes)
-  - [ ] Configurar certificado SSL (Let's Encrypt ou self-signed para dev)
+- [x] **Coturn setup**
+  - [x] Criar `docker-compose.turn.yml` com serviço coturn
+  - [x] Criar `coturn/turnserver.conf` com configuração básica
+    - [x] `listening-port=3478`
+    - [x] `tls-listening-port=443`
+    - [x] `realm=buddy-poker.example.com`
+    - [x] `user=user:pass` (credenciais para testes)
+  - [x] Configurar certificado SSL (Let's Encrypt ou self-signed para dev)
 
-- [ ] **Backend: WebRTC config com TURN**
-  - [ ] Atualizar `/api/webrtc-config` para incluir TURN
-  - [ ] Usar variáveis de ambiente:
-    - [ ] `TURN_SERVER_URL`
-    - [ ] `TURN_USERNAME`
-    - [ ] `TURN_PASSWORD`
-    - [ ] `STUN_SERVER_URL`
+- [x] **Backend: WebRTC config com TURN**
+  - [x] Atualizar `/api/webrtc-config` para incluir TURN
+  - [x] Usar variáveis de ambiente:
+    - [x] `TURN_SERVER_URL`
+    - [x] `TURN_USERNAME`
+    - [x] `TURN_PASSWORD`
+    - [x] `STUN_SERVER_URL`
 
-- [ ] **Documentação de deploy**
-  - [ ] Atualizar `deploy.doc.md` com seção sobre coturn
-  - [ ] Instruções para configurar certificado SSL
-  - [ ] Instruções para rodar coturn em produção
-  - [ ] Estimativa de custos (servidor, bandwidth)
+- [x] **Documentação de deploy**
+  - [x] Atualizar `deploy.doc.md` com seção sobre coturn
+  - [x] Instruções para configurar certificado SSL
+  - [x] Instruções para rodar coturn em produção
+  - [x] Estimativa de custos (servidor, bandwidth)
 
-- [ ] **Exemplo de deploy completo**
-  - [ ] `docker-compose.prod.yml` incluindo app + coturn
-  - [ ] Exemplo de nginx.conf para proxy de coturn (se necessário)
+- [x] **Exemplo de deploy completo**
+  - [x] `docker-compose.prod.yml` incluindo app + coturn
+  - [x] Exemplo de nginx.conf para proxy de coturn (se necessário)
 
-- [ ] **Monitoramento de TURN**
-  - [ ] Documentar como visualizar logs de coturn
-  - [ ] Sugerir métricas para monitorar (bandwidth, sessões)
+- [x] **Monitoramento de TURN**
+  - [x] Documentar como visualizar logs de coturn
+  - [x] Sugerir métricas para monitorar (bandwidth, sessões)
 
-- [ ] **Testes**
-  - [ ] Testar conexão P2P usando TURN relay (simular firewall)
-  - [ ] Verificar que `turns:443` funciona
+- [x] **Testes**
+  - [x] Testar conexão P2P usando TURN relay (simular firewall)
+  - [x] Verificar que `turns:443` funciona
 
 **Critérios de aceite:**
-- [ ] Coturn configurado e rodando via docker-compose
-- [ ] P2P funciona em redes restritas (usando TURN)
-- [ ] Documentação completa de setup de TURN
-- [ ] Exemplo de deploy produção com TURN
+- [x] Coturn configurado e rodando via docker-compose
+- [x] P2P funciona em redes restritas (usando TURN)
+- [x] Documentação completa de setup de TURN
+- [x] Exemplo de deploy produção com TURN
 
 **Estimativa**: 2-3 dias
 
 ---
 
-### Fase 6: Testes E2E (P2P + Fallback)
+### Fase 6: Testes E2E (P2P + Fallback) ✅
 
 **Objetivo**: Cobrir cenários de P2P e fallback com testes E2E (Playwright).
 
 **Tarefas:**
 
-- [ ] **E2E: P2P básico (2 peers)**
-  - [ ] Teste: 2 usuários entram na sala, WebRTC conecta
-  - [ ] Verificar indicador "P2P" visível
-  - [ ] Usuário vota, outro usuário vê voto atualizado via P2P
+- [x] **E2E: P2P básico (2 peers)**
+  - [x] Teste: 2 usuários entram na sala, WebRTC conecta
+  - [x] Verificar indicador "P2P" visível
+  - [x] Usuário vota, outro usuário vê voto atualizado via P2P
 
-- [ ] **E2E: Mesh (3+ peers)**
-  - [ ] Teste: 3 usuários entram na sala
-  - [ ] Verificar que todos os peers conectam entre si (mesh)
-  - [ ] Verificar broadcast (voto de um usuário aparece para todos)
+- [x] **E2E: Mesh (3+ peers)**
+  - [x] Teste: 3 usuários entram na sala
+  - [x] Verificar que todos os peers conectam entre si (mesh)
+  - [x] Verificar broadcast (voto de um usuário aparece para todos)
 
-- [ ] **E2E: Fallback P2P → WebSocket**
-  - [ ] Bloquear WebRTC no browser (via DevTools ou config)
-  - [ ] Verificar que app cai para WebSocket automaticamente
-  - [ ] Verificar indicador "WS" visível
-  - [ ] Funcionalidade continua (vote, reveal, reset)
+- [x] **E2E: Fallback P2P → WebSocket**
+  - [x] Bloquear WebRTC no browser (via DevTools ou config)
+  - [x] Verificar que app cai para WebSocket automaticamente
+  - [x] Verificar indicador "WS" visível
+  - [x] Funcionalidade continua (vote, reveal, reset)
 
-- [ ] **E2E: Sala > 8 participantes**
-  - [ ] Teste: 9+ usuários tentam entrar
-  - [ ] Verificar que app usa WebSocket diretamente (sem tentar P2P)
+- [x] **E2E: Sala > 8 participantes**
+  - [x] Teste: 9+ usuários tentam entrar
+  - [x] Verificar que app usa WebSocket diretamente (sem tentar P2P)
 
-- [ ] **E2E: Return-to-P2P**
-  - [ ] Começar em WebSocket (simular falha inicial de P2P)
-  - [ ] Aguardar 60s
-  - [ ] Verificar que app tenta retornar para P2P
-  - [ ] Se bem-sucedido, indicador muda para "P2P"
+- [x] **E2E: Return-to-P2P**
+  - [x] Começar em WebSocket (simular falha inicial de P2P)
+  - [x] Aguardar 60s
+  - [x] Verificar que app tenta retornar para P2P
+  - [x] Se bem-sucedido, indicador muda para "P2P"
 
-- [ ] **E2E: Reconexão de peer**
-  - [ ] 2 peers conectados via P2P
-  - [ ] Simular desconexão de um peer (fechar DataChannel)
-  - [ ] Verificar reconexão automática ou fallback
+- [x] **E2E: Reconexão de peer**
+  - [x] 2 peers conectados via P2P
+  - [x] Simular desconexão de um peer (fechar DataChannel)
+  - [x] Verificar reconexão automática ou fallback
 
 **Critérios de aceite:**
-- [ ] Todos os cenários E2E passam
-- [ ] Testes cobrem P2P, fallback, return-to-P2P
-- [ ] `yarn e2e` passa sem erros
+- [x] Todos os cenários E2E passam
+- [x] Testes cobrem P2P, fallback, return-to-P2P
+- [x] `yarn e2e` passa sem erros
 
 **Estimativa**: 3-4 dias
 
