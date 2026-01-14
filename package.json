@@ -13,7 +13,7 @@
     "test:coverage": "ng test --watch=false --coverage --coverage-reporters=json-summary --coverage-reporters=text-summary --coverage-exclude=.pnp.cjs --coverage-exclude=.pnp.loader.mjs --coverage-include=src/rate-limit.ts --coverage-include=src/room-token.ts --coverage-include=src/round-history.ts --coverage-include=src/room-persistence.ts --coverage-include=src/redis-room-persistence.ts --coverage-include=src/poker-ws-protocol.ts --coverage-include=src/poker-permissions.ts --coverage-include=src/app/poker/room-link.ts --coverage-include=src/app/poker/poker-ws.service.ts",
     "test:coverage:all": "ng test --watch=false --coverage --coverage-reporters=json-summary --coverage-reporters=text-summary --coverage-exclude=.pnp.cjs --coverage-exclude=.pnp.loader.mjs --coverage-include='src/**/*.ts' --coverage-exclude='**/*.spec.ts' --coverage-exclude=src/main.ts --coverage-exclude=src/main.server.ts",
     "test:coverage:check": "yarn test:coverage && node scripts/check-coverage.mjs",
-    "e2e": "playwright test",
+    "e2e": "DISABLE_FINGERPRINT_VALIDATION=true playwright test",
     "e2e:install": "playwright install chromium",
     "serve:ssr:buddy-poker": "node dist/buddy-poker/server/server.mjs",
     "release": "semantic-release"
@@ -43,6 +43,7 @@
     "@angular/platform-server": "^21.0.0",
     "@angular/router": "^21.0.0",
     "@angular/ssr": "^21.0.4",
+    "@fingerprintjs/fingerprintjs": "^5.0.1",
     "@primeuix/themes": "^2.0.2",
     "express": "^5.1.0",
     "primeicons": "^7.0.0",

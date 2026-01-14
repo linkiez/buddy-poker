@@ -1,9 +1,9 @@
-import { Injectable, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
+import { inject, Injectable, PLATFORM_ID } from '@angular/core';
 import { BehaviorSubject } from 'rxjs';
-import type { Transport, TransportStatus, TransportEventHandlers } from './transport.types';
 import type { PokerClientMessage, PokerServerMessage } from './poker-types';
 import { SignalingService } from './signaling.service';
+import type { Transport, TransportEventHandlers, TransportStatus } from './transport.types';
 
 interface WebRtcConfig {
   iceServers: RTCIceServer[];
@@ -79,7 +79,7 @@ export class WebRtcTransport implements Transport {
     this.handlers = handlers;
   }
 
-  async connect(roomId: string, name: string, token?: string): Promise<void> {
+  async connect(roomId: string, name: string, token?: string, fingerprint?: string): Promise<void> {
     if (!isPlatformBrowser(this.platformId)) {
       throw new Error('WebRTC not available in SSR');
     }

@@ -47,6 +47,39 @@ describe('parsePokerWsMessageFromClient', () => {
     });
   });
 
+  it('should parse join message (with fingerprint)', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', fingerprint: 'fp123' })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+      fingerprint: 'fp123',
+    });
+  });
+
+  it('should parse join message (with token and fingerprint)', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', token: 't', fingerprint: 'fp123' })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+      token: 't',
+      fingerprint: 'fp123',
+    });
+  });
+
+  it('should ignore non-string fingerprint on join', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', fingerprint: 123 })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+    });
+  });
+
   it('should return null for invalid join payload', () => {
     expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 1, name: 'n' }))).toBeNull();
     expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 2 }))).toBeNull();

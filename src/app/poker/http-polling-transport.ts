@@ -1,11 +1,11 @@
-import type {
-  Transport,
-  TransportConfig,
-  TransportEventHandlers,
-  TransportMode,
-  TransportStatus,
-} from './transport.types';
 import type { PokerClientMessage, PokerServerMessage } from './poker-types';
+import type {
+    Transport,
+    TransportConfig,
+    TransportEventHandlers,
+    TransportMode,
+    TransportStatus,
+} from './transport.types';
 
 export class HttpPollingTransport implements Transport {
   readonly mode: TransportMode = 'http-polling';
@@ -15,7 +15,7 @@ export class HttpPollingTransport implements Transport {
   private lastEventId: number = 0;
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private manualDisconnect = false;
-  private lastJoin: { roomId: string; name: string; token?: string } | null = null;
+  private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
 
   private readonly config: Required<TransportConfig>;
   private readonly handlers: TransportEventHandlers;
@@ -42,16 +42,16 @@ export class HttpPollingTransport implements Transport {
     }
   }
 
-  async connect(roomId: string, name: string, token?: string): Promise<void> {
+  async connect(roomId: string, name: string, token?: string, fingerprint?: string): Promise<void> {
     this.manualDisconnect = false;
-    this.lastJoin = { roomId, name, ...(token ? { token } : {}) };
+    this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
 
     this.setStatus('connecting');
 
     try {
       // Send join action
-      await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}) });
-      
+      await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
+
       this.setStatus('connected');
       this.startPolling();
     } catch (error) {
@@ -80,7 +80,7 @@ export class HttpPollingTransport implements Transport {
 
   private async sendAction(message: PokerClientMessage): Promise<void> {
     const url = '/api/poker/action';
-    
+
     try {
       const response = await fetch(url, {
         method: 'POST',
@@ -97,12 +97,12 @@ export class HttpPollingTransport implements Transport {
       }
 
       const result = await response.json();
-      
+
       // Handle immediate response
       if (result.message) {
         this.handlers.onMessage(result.message as PokerServerMessage);
       }
-      
+
       // Store client ID from join response
       if (result.clientId && typeof result.clientId === 'string') {
         this.clientId = result.clientId;
@@ -115,7 +115,7 @@ export class HttpPollingTransport implements Transport {
 
   private startPolling(): void {
     this.stopPolling();
-    
+
     this.pollingIntervalId = setInterval(() => {
       void this.poll();
     }, this.config.pollingIntervalMs);
@@ -152,7 +152,7 @@ export class HttpPollingTransport implements Transport {
           console.warn('[HttpPollingTransport] Client session expired, reconnecting...');
           if (this.lastJoin) {
             this.setStatus('reconnecting');
-            void this.connect(this.lastJoin.roomId, this.lastJoin.name, this.lastJoin.token);
+            void this.connect(this.lastJoin.roomId, this.lastJoin.name, this.lastJoin.token, this.lastJoin.fingerprint);
           }
           return;
         }
@@ -160,7 +160,7 @@ export class HttpPollingTransport implements Transport {
       }
 
       const result = await response.json();
-      
+
       if (result.events && Array.isArray(result.events)) {
         for (const event of result.events) {
           if (event.id > this.lastEventId) {

@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Browser } from '@playwright/test';
+import { expect, test, type Page } from '@playwright/test';
 
 function extractRoomIdFromUrl(url: string): string {
   const parsed = new URL(url);
@@ -33,7 +33,7 @@ async function ensureJoinedFromJoinCard(page: Page, name: string) {
 async function getTransportMode(page: Page): Promise<string | null> {
   // Look for the transport mode tag in the room header
   const transportTag = page.locator('p-tag').filter({ hasText: /^(P2P|WebSocket|HTTP)$/ });
-  
+
   if (await transportTag.count() === 0) {
     return null;
   }
@@ -46,6 +46,20 @@ async function waitForTransportMode(page: Page, expectedMode: string, timeout = 
   await expect
     .poll(async () => await getTransportMode(page), { timeout })
     .toBe(expectedMode);
+}
+
+async function waitForParticipantCount(page: Page, count: number, timeout = 15000) {
+  await page.waitForFunction(
+    (expectedCount) => {
+      const subtitle = document.querySelector('.subtitle');
+      if (!subtitle) return false;
+      const text = subtitle.textContent || '';
+      const match = text.match(/Participantes:\s*(\d+)/);
+      return match && Number.parseInt(match[1], 10) === expectedCount;
+    },
+    count,
+    { timeout }
+  );
 }
 
 test.describe('P2P WebRTC - Basic Connection', () => {
@@ -71,7 +85,7 @@ test.describe('P2P WebRTC - Basic Connection', () => {
       .toBeTruthy();
 
     // Wait for Alice to join
-    await expect(alicePage.getByText('Participantes: 1')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(alicePage, 1);
 
     // Bob joins
     const bobContext = await browser.newContext();
@@ -83,15 +97,15 @@ test.describe('P2P WebRTC - Basic Connection', () => {
     await ensureJoinedFromJoinCard(bobPage, 'Bob');
 
     // Both should see 2 participants
-    await expect(bobPage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
-    await expect(alicePage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(bobPage, 2);
+    await waitForParticipantCount(alicePage, 2);
 
     // Check for P2P mode (may take time to establish)
     // Note: In test environment without TURN, P2P might not connect
     // So we check for any transport mode but verify functionality
     const aliceMode = await getTransportMode(alicePage);
     const bobMode = await getTransportMode(bobPage);
-    
+
     expect(aliceMode).toBeTruthy();
     expect(bobMode).toBeTruthy();
     console.log(`Alice transport: ${aliceMode}, Bob transport: ${bobMode}`);
@@ -142,7 +156,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
       }, { timeout: 15_000 })
       .toBeTruthy();
 
-    await expect(alicePage.getByText('Participantes: 1')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(alicePage, 1);
 
     // Bob and Charlie join
     for (const name of ['Bob', 'Charlie']) {
@@ -160,7 +174,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // All should see 3 participants
     for (const page of pages) {
-      await expect(page.getByText('Participantes: 3')).toBeVisible({ timeout: 15_000 });
+      await waitForParticipantCount(page, 3);
     }
 
     // Verify mesh: each peer votes
@@ -235,7 +249,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // All should see 8 participants
     for (const page of pages) {
-      await expect(page.getByText(`Participantes: ${peerCount}`)).toBeVisible({ timeout: 20_000 });
+      await waitForParticipantCount(page, peerCount, 20000);
     }
 
     // Verify voting works with 8 peers
@@ -247,7 +261,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // Verify votes visible
     await expect(firstPage.getByText('votos revelados')).toBeVisible();
-    
+
     // Cleanup
     for (const context of contexts) {
       await context.close();
@@ -300,13 +314,13 @@ test.describe('P2P WebRTC - Fallback Scenarios', () => {
 
     // All should see 9 participants
     for (const page of pages) {
-      await expect(page.getByText(`Participantes: ${peerCount}`)).toBeVisible({ timeout: 20_000 });
+      await waitForParticipantCount(page, peerCount, 20000);
     }
 
     // Check transport mode - should NOT be P2P for >8 peers
     const mode = await getTransportMode(firstPage);
     console.log(`Room with ${peerCount} peers using transport: ${mode}`);
-    
+
     // Mode should be WebSocket or HTTP, not P2P
     expect(mode).not.toBe('P2P');
 
@@ -343,7 +357,7 @@ test.describe('P2P WebRTC - Peer Disconnection', () => {
       }, { timeout: 15_000 })
       .toBeTruthy();
 
-    await expect(alicePage.getByText('Participantes: 1')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(alicePage, 1);
 
     // Bob joins
     const bobContext = await browser.newContext();
@@ -364,14 +378,14 @@ test.describe('P2P WebRTC - Peer Disconnection', () => {
     await ensureJoinedFromJoinCard(charliePage, 'Charlie');
 
     // All see 3 participants
-    await expect(alicePage.getByText('Participantes: 3')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(alicePage, 3);
 
     // Bob disconnects
     await bobContext.close();
 
     // Remaining peers should see 2 participants
-    await expect(alicePage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
-    await expect(charliePage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
+    await waitForParticipantCount(alicePage, 2);
+    await waitForParticipantCount(charliePage, 2);
 
     // Verify voting still works
     await alicePage.getByRole('button', { name: '5' }).click();

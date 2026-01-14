@@ -22,7 +22,7 @@ export interface Transport {
   readonly mode: TransportMode;
   readonly status: TransportStatus;
 
-  connect(roomId: string, name: string, token?: string): void | Promise<void>;
+  connect(roomId: string, name: string, token?: string, fingerprint?: string): void | Promise<void>;
   send(message: PokerClientMessage): void;
   disconnect(): void;
   hasConnectionFailed?(): boolean;

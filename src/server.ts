@@ -1,8 +1,8 @@
 import {
-    AngularNodeAppEngine,
-    createNodeRequestHandler,
-    isMainModule,
-    writeResponseToNodeResponse,
+  AngularNodeAppEngine,
+  createNodeRequestHandler,
+  isMainModule,
+  writeResponseToNodeResponse,
 } from '@angular/ssr/node';
 import express from 'express';
 import { createServer } from 'node:http';
@@ -22,10 +22,14 @@ const browserDistFolder = join(import.meta.dirname, '../browser');
 const app = express();
 const angularApp = new AngularNodeAppEngine();
 
+// Disable fingerprint validation in E2E tests
+const DISABLE_FINGERPRINT_VALIDATION = process.env['DISABLE_FINGERPRINT_VALIDATION'] === 'true';
+
 type PokerParticipantState = {
   id: string;
   name: string;
   vote: string | null;
+  fingerprint: string | null;
 };
 
 type PokerRoomState = {
@@ -174,7 +178,7 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
 async function handleJoinMessage(
   state: PokerConnectionState,
   socket: WebSocket,
-  msg: { roomId: string; name: string; token?: string },
+  msg: { roomId: string; name: string; token?: string; fingerprint?: string },
 ): Promise<void> {
   const room = await getOrCreateRoom(msg.roomId);
   const name = normalizeName(msg.name);
@@ -194,6 +198,17 @@ async function handleJoinMessage(
     return;
   }
 
+  // Check if fingerprint is already in use by another participant
+  if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
+    const existingParticipant = Array.from(room.participants.values()).find(
+      (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
+    );
+    if (existingParticipant) {
+      sendError(socket, 'Você já está participando desta sala com outra identidade.');
+      return;
+    }
+  }
+
   if (state.currentRoom && state.clientId) {
     removeClientFromRoom(state.currentRoom, state.clientId);
   }
@@ -202,7 +217,7 @@ async function handleJoinMessage(
   state.clientId = clientId;
   state.currentRoom = room;
 
-  room.participants.set(clientId, { id: clientId, name, vote: null });
+  room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
   room.sockets.set(clientId, socket);
 
   if (!room.ownerId) {
@@ -625,8 +640,8 @@ app.post('/api/poker/action', async (req, res) => {
       }
 
       const clientId = existingClientId ?? generateId();
-      
-      room.participants.set(clientId, { id: clientId, name, vote: null });
+
+      room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: null });
 
       if (!room.ownerId) {
         room.ownerId = clientId;

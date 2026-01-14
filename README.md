@@ -89,6 +89,27 @@ yarn e2e:install
 yarn e2e
 ```
 
+## Variáveis de Ambiente
+
+### Servidor
+
+- `PORT`: Porta do servidor (padrão: `4000`)
+- `REDIS_URL`: URL do Redis para persistência de salas (opcional, exemplo: `redis://localhost:6379`)
+- `DISABLE_FINGERPRINT_VALIDATION`: Desabilita validação de fingerprint (padrão: `false`, usado apenas em testes E2E)
+- `MAX_P2P_PEERS`: Número máximo de peers em modo P2P (padrão: `8`)
+- `WEBRTC_CONNECTION_TIMEOUT`: Timeout de conexão WebRTC em ms (padrão: `15000`)
+
+### Cliente
+
+Você pode ajustar os parâmetros de fallback definindo variáveis globais no `window` antes de carregar o app:
+
+```javascript
+window.WS_CONNECTION_TIMEOUT_MS = 10000;  // Timeout de conexão WebSocket (padrão: 10s)
+window.WS_RECONNECT_BASE_DELAY_MS = 500;  // Delay base para reconexão (padrão: 500ms)
+window.WS_RECONNECT_MAX_DELAY_MS = 10000; // Delay máximo para reconexão (padrão: 10s)
+window.HTTP_POLLING_INTERVAL_MS = 3000;   // Intervalo de polling HTTP (padrão: 3s)
+```
+
 ## Arquitetura
 
 - Frontend: Angular (SSR) + PrimeNG

@@ -24,7 +24,7 @@ export type PokerServerMessage =
   | { type: 'webrtc-ice-candidate'; fromPeerId: string; candidate: RTCIceCandidateInit };
 
 export type PokerClientMessage =
-  | { type: 'join'; roomId: string; name: string; token?: string }
+  | { type: 'join'; roomId: string; name: string; token?: string; fingerprint?: string }
   | { type: 'vote'; roomId: string; value: string }
   | { type: 'reveal'; roomId: string }
   | { type: 'reset'; roomId: string }

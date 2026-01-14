@@ -1,18 +1,18 @@
-import type {
-  Transport,
-  TransportConfig,
-  TransportEventHandlers,
-  TransportMode,
-  TransportStatus,
-} from './transport.types';
 import type { PokerClientMessage, PokerServerMessage } from './poker-types';
+import type {
+    Transport,
+    TransportConfig,
+    TransportEventHandlers,
+    TransportMode,
+    TransportStatus,
+} from './transport.types';
 
 export class WebSocketTransport implements Transport {
   readonly mode: TransportMode = 'websocket';
   private _status: TransportStatus = 'disconnected';
 
   private socket: WebSocket | null = null;
-  private lastJoin: { roomId: string; name: string; token?: string } | null = null;
+  private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private reconnectAttempts = 0;
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private manualDisconnect = false;
@@ -44,14 +44,14 @@ export class WebSocketTransport implements Transport {
     }
   }
 
-  connect(roomId: string, name: string, token?: string): void {
+  connect(roomId: string, name: string, token?: string, fingerprint?: string): void {
     this.manualDisconnect = false;
-    this.lastJoin = { roomId, name, ...(token ? { token } : {}) };
+    this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
     this.clearReconnectTimeout();
     this.clearConnectionTimeout();
 
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.send({ type: 'join', roomId, name, ...(token ? { token } : {}) });
+      this.send({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
       return;
     }
 
@@ -111,6 +111,7 @@ export class WebSocketTransport implements Transport {
           roomId: this.lastJoin.roomId,
           name: this.lastJoin.name,
           ...(this.lastJoin.token ? { token: this.lastJoin.token } : {}),
+          ...(this.lastJoin.fingerprint ? { fingerprint: this.lastJoin.fingerprint } : {}),
         });
       }
     });
@@ -151,12 +152,12 @@ export class WebSocketTransport implements Transport {
       if (this.manualDisconnect) {
         return;
       }
-      
+
       // If connection never succeeded, this is a connection failure
       if (!this.connectionSucceeded) {
         console.warn('[WebSocketTransport] Connection failed');
       }
-      
+
       this.setStatus('reconnecting');
     });
   }

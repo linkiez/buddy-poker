@@ -1,15 +1,15 @@
 import { isPlatformBrowser } from '@angular/common';
 import { Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
-import type {
-    PokerClientMessage,
-    PokerRoomViewState,
-    PokerServerMessage,
-} from './poker-types';
-import type { Transport, TransportEventHandlers, TransportStatus, TransportMode } from './transport.types';
-import { WebSocketTransport } from './websocket-transport';
+import { getBrowserFingerprint } from './browser-fingerprint';
 import { HttpPollingTransport } from './http-polling-transport';
+import type {
+  PokerRoomViewState,
+  PokerServerMessage
+} from './poker-types';
+import type { Transport, TransportEventHandlers, TransportMode, TransportStatus } from './transport.types';
 import { WebRtcTransport } from './webrtc-transport';
+import { WebSocketTransport } from './websocket-transport';
 
 type PokerWsConnectionStatus =
   | 'disconnected'
@@ -30,7 +30,7 @@ export class PokerWsService {
   private currentMode: TransportMode | null = null;
   private roomSize = 0; // Track room size for P2P eligibility
 
-  private lastJoin: { roomId: string; name: string; token?: string } | null = null;
+  private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private wsRetryIntervalMs = 60_000; // Try to return to better transport every 60 seconds
 
@@ -78,13 +78,15 @@ export class PokerWsService {
     return this.transport?.status === 'connected';
   }
 
-  connect(roomId: string, name: string, token?: string): void {
+  async connect(roomId: string, name: string, token?: string): Promise<void> {
     if (!isPlatformBrowser(this.platformId)) {
       return;
     }
 
+    const fingerprint = await getBrowserFingerprint();
+
     this.roomId = roomId;
-    this.lastJoin = { roomId, name, ...(token ? { token } : {}) };
+    this.lastJoin = { roomId, name, ...(token ? { token } : {}), fingerprint };
     this.clearWsRetryTimeout();
 
     // Try WebRTC first (if room size <= 8), then WebSocket, then HTTP
@@ -92,7 +94,7 @@ export class PokerWsService {
       this.tryBestTransport();
     }
 
-    this.transport?.connect(roomId, name, token);
+    this.transport?.connect(roomId, name, token, fingerprint);
   }
 
   vote(value: string): void {
@@ -217,7 +219,7 @@ export class PokerWsService {
     }
 
     console.log('[PokerWsService] Switching to WebRTC transport');
-    
+
     const oldTransport = this.transport;
     oldTransport?.disconnect();
 
@@ -242,7 +244,7 @@ export class PokerWsService {
     }
 
     console.log('[PokerWsService] Switching to WebSocket transport');
-    
+
     const oldTransport = this.transport;
     oldTransport?.disconnect();
 
@@ -274,7 +276,7 @@ export class PokerWsService {
     }
 
     console.log('[PokerWsService] Switching to HTTP polling transport');
-    
+
     const oldTransport = this.transport;
     oldTransport?.disconnect();
 

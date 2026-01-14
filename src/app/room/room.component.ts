@@ -265,7 +265,7 @@ export class RoomComponent implements OnInit, OnDestroy {
     if (isPlatformBrowser(this.platformId)) {
       sessionStorage.setItem('bp_name', name);
     }
-    this.ws.connect(this.roomId, name, this.roomToken() ?? undefined);
+    void this.ws.connect(this.roomId, name, this.roomToken() ?? undefined);
     this.isJoined.set(true);
   }
 

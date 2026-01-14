@@ -12,8 +12,7 @@ Servidor Node/Express usado pelo SSR do Angular, com um WebSocket server no mesm
 - Manter histórico **em memória** das rodadas (limitado por sala).
 - Persistir opcionalmente **metadados de sala** (token e histórico) em storage externo (ex.: Redis).
 - Definir um moderador por sala (primeiro participante conectado).
-- Proteger salas com token simples (evita entrar “por acaso” sem o link correto).
-- Aceitar conexões WebSocket em `/ws` e publicar o estado da sala.
+- Proteger salas com token simples (evita entrar “por acaso” sem o link correto).- Validar unicidade de participantes através de fingerprint do navegador (evita múltiplas identidades do mesmo usuário).- Aceitar conexões WebSocket em `/ws` e publicar o estado da sala.
 
 ## Entradas e saídas
 
@@ -53,6 +52,7 @@ sequenceDiagram
 - Mensagens inválidas (JSON inválido ou campos faltantes) são ignoradas silenciosamente.
 - Apenas o moderador pode executar `reveal` e `reset` (caso contrário, o servidor envia `{type:"error"}`).
 - A partir do 2º participante, a sala exige `token` (enviado pelo moderador no link compartilhado).
+- Validação de fingerprint: se um usuário tentar entrar na sala com nome diferente mas mesmo fingerprint, recebe erro "Você já está participando desta sala com outra identidade."
 - O servidor aplica rate limit por conexão WS para reduzir spam de mensagens.
 - O WebSocket server usa heartbeat ping/pong para encerrar conexões zumbis.
 - O estado de participantes é em memória: reiniciar o processo derruba conexões e limpa participantes.
@@ -74,6 +74,10 @@ sequenceDiagram
 
 ```json
 { "type": "join", "roomId": "scrumzada-abc123", "name": "Dev Ninja", "token": "<token-da-sala>" }
+```
+
+```json
+{ "type": "join", "roomId": "scrumzada-abc123", "name": "Dev Ninja", "token": "<token-da-sala>", "fingerprint": "abc123def456" }
 ```
 
 ```json

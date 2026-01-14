@@ -9,6 +9,20 @@ function extractRoomIdFromUrl(url: string): string {
   return match[1];
 }
 
+async function waitForParticipantCount(page: Page, count: number, timeout = 15000) {
+  await page.waitForFunction(
+    (expectedCount) => {
+      const subtitle = document.querySelector('.subtitle');
+      if (!subtitle) return false;
+      const text = subtitle.textContent || '';
+      const match = text.match(/Participantes:\s*(\d+)/);
+      return match && Number.parseInt(match[1], 10) === expectedCount;
+    },
+    count,
+    { timeout }
+  );
+}
+
 async function ensureJoinedFromJoinCard(page: Page, name: string) {
   const joinCard = page.locator('.join');
   const joinNameInput = joinCard.getByLabel('Seu nome');
@@ -40,7 +54,7 @@ test('can open a room without name and join via form', async ({ page }) => {
   await page.getByLabel('Seu nome').fill('Carol');
   await page.getByRole('button', { name: 'Entrar' }).click();
 
-  await expect(page.getByText('Participantes: 1')).toBeVisible({ timeout: 15_000 });
+  await waitForParticipantCount(page, 1);
 });
 
 test('moderator can run a round with two participants (WS + SSR)', async ({ browser }) => {
@@ -78,8 +92,8 @@ test('moderator can run a round with two participants (WS + SSR)', async ({ brow
 
   await ensureJoinedFromJoinCard(bobPage, 'Bob');
 
-  await expect(bobPage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
-  await expect(alicePage.getByText('Participantes: 2')).toBeVisible({ timeout: 15_000 });
+  await waitForParticipantCount(bobPage, 2);
+  await waitForParticipantCount(alicePage, 2);
 
   await expect(bobPage.getByRole('button', { name: 'Revelar' })).toHaveCount(0);
   await expect(bobPage.getByRole('button', { name: 'Resetar' })).toHaveCount(0);
@@ -140,4 +154,48 @@ test('joining an existing room without token is rejected (from 2nd participant o
 
   await eveContext.close();
   await aliceContext.close();
+});
+
+test('same user cannot join room with different identity (fingerprint validation)', async ({ browser }) => {
+  // Use same browser context to ensure same fingerprint
+  const context = await browser.newContext();
+  const alicePage = await context.newPage();
+
+  // Alice creates room
+  await alicePage.goto('/');
+  await alicePage.getByLabel('Seu nome').fill('Alice');
+  await alicePage.getByRole('button', { name: 'Criar uma sala aleatória' }).click();
+  await expect(alicePage).toHaveURL(/\/room\//);
+
+  const roomOrigin = new URL(alicePage.url()).origin;
+  const roomId = extractRoomIdFromUrl(alicePage.url());
+
+  let token: string | null = null;
+  await expect
+    .poll(() => {
+      token = new URL(alicePage.url()).searchParams.get('token');
+      return token;
+    }, { timeout: 15_000 })
+    .toBeTruthy();
+
+  await waitForParticipantCount(alicePage, 1);
+
+  // Try to join same room with different name in new tab (same browser context = same fingerprint)
+  const evePage = await context.newPage();
+  const params = new URLSearchParams();
+  params.set('name', 'Eve');
+  params.set('token', token ?? '');
+  await evePage.goto(`${roomOrigin}/room/${roomId}?${params.toString()}`);
+
+  await ensureJoinedFromJoinCard(evePage, 'Eve');
+
+  // Should see error message about already being in the room
+  await expect(evePage.getByText('Você já está participando desta sala com outra identidade.')).toBeVisible({
+    timeout: 15_000,
+  });
+
+  // Alice should still see only 1 participant
+  await waitForParticipantCount(alicePage, 1);
+
+  await context.close();
 });
