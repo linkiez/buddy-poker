@@ -12,6 +12,7 @@ export class WebSocketTransport implements Transport {
   private _status: TransportStatus = 'disconnected';
 
   private socket: WebSocket | null = null;
+  private roomId: string = '';
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private reconnectAttempts = 0;
   private reconnectTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -33,6 +34,26 @@ export class WebSocketTransport implements Transport {
     };
   }
 
+  private getStorageKey(suffix: string): string {
+    return `bp_${suffix}_${this.roomId}`;
+  }
+
+  private saveLastEventId(eventId: number): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(this.getStorageKey('lastEventId'), eventId.toString());
+  }
+
+  private clearSessionStorage(): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.removeItem(this.getStorageKey('lastEventId'));
+  }
+
   get status(): TransportStatus {
     return this._status;
   }
@@ -46,6 +67,7 @@ export class WebSocketTransport implements Transport {
 
   connect(roomId: string, name: string, token?: string, fingerprint?: string): void {
     this.manualDisconnect = false;
+    this.roomId = roomId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
     this.clearReconnectTimeout();
     this.clearConnectionTimeout();
@@ -74,6 +96,7 @@ export class WebSocketTransport implements Transport {
     this.manualDisconnect = true;
     this.clearReconnectTimeout();
     this.clearConnectionTimeout();
+    this.clearSessionStorage();
 
     this.socket?.close();
     this.socket = null;

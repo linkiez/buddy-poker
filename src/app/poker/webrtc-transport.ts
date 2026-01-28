@@ -142,6 +142,11 @@ export class WebRtcTransport implements Transport {
       this.connectionTimeoutHandle = null;
     }
 
+    // Clear session storage when disconnecting
+    if (this.roomId && typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`bp_lastEventId_${this.roomId}`);
+    }
+
     for (const [peerId] of this.peerConnections) {
       this.closePeerConnection(peerId);
     }

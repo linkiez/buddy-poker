@@ -13,6 +13,7 @@ export class HttpPollingTransport implements Transport {
 
   private clientId: string | null = null;
   private lastEventId: number = 0;
+  private roomId: string = '';
   private pollingIntervalId: ReturnType<typeof setInterval> | null = null;
   private manualDisconnect = false;
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
@@ -31,6 +32,50 @@ export class HttpPollingTransport implements Transport {
     };
   }
 
+  private getStorageKey(suffix: string): string {
+    return `bp_${suffix}_${this.roomId}`;
+  }
+
+  private restoreSessionState(roomId: string): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
+    const lastEventIdStr = localStorage.getItem(this.getStorageKey('lastEventId'));
+    if (lastEventIdStr) {
+      const parsed = Number.parseInt(lastEventIdStr, 10);
+      if (Number.isFinite(parsed) && parsed > 0) {
+        this.lastEventId = parsed;
+      }
+    }
+  }
+
+  private saveClientId(clientId: string): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(this.getStorageKey('clientId'), clientId);
+  }
+
+  private saveLastEventId(eventId: number): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(this.getStorageKey('lastEventId'), eventId.toString());
+  }
+
+  private clearSessionStorage(): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.removeItem(this.getStorageKey('clientId'));
+    localStorage.removeItem(this.getStorageKey('lastEventId'));
+  }
+
   get status(): TransportStatus {
     return this._status;
   }
@@ -44,7 +89,11 @@ export class HttpPollingTransport implements Transport {
 
   async connect(roomId: string, name: string, token?: string, fingerprint?: string): Promise<void> {
     this.manualDisconnect = false;
+    this.roomId = roomId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
+
+    // Try to restore previous session
+    this.restoreSessionState(roomId);
 
     this.setStatus('connecting');
 
@@ -72,6 +121,7 @@ export class HttpPollingTransport implements Transport {
   disconnect(): void {
     this.manualDisconnect = true;
     this.stopPolling();
+    this.clearSessionStorage();
     this.clientId = null;
     this.lastEventId = 0;
     this.lastJoin = null;
@@ -106,6 +156,7 @@ export class HttpPollingTransport implements Transport {
       // Store client ID from join response
       if (result.clientId && typeof result.clientId === 'string') {
         this.clientId = result.clientId;
+        this.saveClientId(result.clientId);
       }
     } catch (error) {
       console.error('[HttpPollingTransport] Failed to send action:', error);
@@ -164,8 +215,7 @@ export class HttpPollingTransport implements Transport {
       if (result.events && Array.isArray(result.events)) {
         for (const event of result.events) {
           if (event.id > this.lastEventId) {
-            this.lastEventId = event.id;
-          }
+            this.lastEventId = event.id;             this.saveLastEventId(this.lastEventId);          }
           if (event.message) {
             this.handlers.onMessage(event.message as PokerServerMessage);
           }
