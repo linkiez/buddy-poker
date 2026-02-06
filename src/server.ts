@@ -204,8 +204,14 @@ async function handleJoinMessage(
       (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
     );
     if (existingParticipant) {
-      sendError(socket, 'Você já está participando desta sala com outra identidade.');
-      return;
+      // Check if this participant has an active socket connection
+      const hasActiveSocket = room.sockets.has(existingParticipant.id);
+      if (hasActiveSocket) {
+        // Active connection exists - reject to prevent duplicate sessions
+        sendError(socket, 'Você já está participando desta sala com outra identidade.');
+        return;
+      }
+      // No active socket - allow session restoration (will reuse clientId below)
     }
   }
 
@@ -219,8 +225,8 @@ async function handleJoinMessage(
     ? Array.from(room.participants.values()).find((p) => p.fingerprint === msg.fingerprint)
     : null;
   
-  if (existingParticipantWithFingerprint) {
-    // Reuse existing clientId for this fingerprint (user refreshed page)
+  if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
+    // Reuse existing clientId for this fingerprint (user refreshed page, no active connection)
     clientId = existingParticipantWithFingerprint.id;
   } else {
     // Generate new clientId for new participant

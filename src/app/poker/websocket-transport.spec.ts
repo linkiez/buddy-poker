@@ -328,8 +328,16 @@ describe('WebSocketTransport', () => {
     const ws = MockWebSocket.instances[0];
     ws.open();
 
-    // Verify clientId was restored (we can't directly check private field, but localStorage should still have it)
-    expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-123');
+    // Send a different clientId from server (fingerprint-based restoration happens server-side)
+    const joinedMessage = {
+      type: 'joined',
+      clientId: 'client-456',
+      roomId: 'room-1',
+    };
+    ws.message(JSON.stringify(joinedMessage));
+
+    // Verify the new clientId from server overwrites localStorage
+    expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-456');
   });
 
   it('should clear clientId from localStorage on disconnect', () => {
