@@ -44,6 +44,8 @@ export class WebSocketTransport implements Transport {
       return;
     }
 
+    // Note: clientId restoration is stored for consistency with HTTP polling transport
+    // For WebSocket connections, session restoration happens server-side via fingerprint matching
     this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
   }
 

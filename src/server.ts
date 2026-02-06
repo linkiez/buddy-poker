@@ -199,13 +199,15 @@ async function handleJoinMessage(
   }
 
   // Check if fingerprint is already in use by another participant
+  let existingParticipantWithFingerprint: { id: string; name: string; vote: string | null; fingerprint: string | null } | null = null;
   if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
-    const existingParticipant = Array.from(room.participants.values()).find(
+    existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
       (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
-    );
-    if (existingParticipant) {
+    ) ?? null;
+    
+    if (existingParticipantWithFingerprint) {
       // Check if this participant has an active socket connection
-      const hasActiveSocket = room.sockets.has(existingParticipant.id);
+      const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
       if (hasActiveSocket) {
         // Active connection exists - reject to prevent duplicate sessions
         sendError(socket, 'Você já está participando desta sala com outra identidade.');
@@ -221,10 +223,6 @@ async function handleJoinMessage(
 
   // Try to reuse clientId for existing participant with same fingerprint (session restoration)
   let clientId: string;
-  const existingParticipantWithFingerprint = msg.fingerprint
-    ? Array.from(room.participants.values()).find((p) => p.fingerprint === msg.fingerprint)
-    : null;
-  
   if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
     // Reuse existing clientId for this fingerprint (user refreshed page, no active connection)
     clientId = existingParticipantWithFingerprint.id;
