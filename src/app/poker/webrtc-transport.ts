@@ -144,6 +144,7 @@ export class WebRtcTransport implements Transport {
 
     // Clear session storage when disconnecting
     if (this.roomId && typeof localStorage !== 'undefined') {
+      localStorage.removeItem(`bp_clientId_${this.roomId}`);
       localStorage.removeItem(`bp_lastEventId_${this.roomId}`);
     }
 

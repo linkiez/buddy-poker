@@ -12,6 +12,7 @@ export class WebSocketTransport implements Transport {
   private _status: TransportStatus = 'disconnected';
 
   private socket: WebSocket | null = null;
+  private clientId: string | null = null;
   private roomId: string = '';
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private reconnectAttempts = 0;
@@ -38,6 +39,22 @@ export class WebSocketTransport implements Transport {
     return `bp_${suffix}_${this.roomId}`;
   }
 
+  private restoreSessionState(roomId: string): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
+  }
+
+  private saveClientId(clientId: string): void {
+    if (typeof localStorage === 'undefined') {
+      return;
+    }
+
+    localStorage.setItem(this.getStorageKey('clientId'), clientId);
+  }
+
   private saveLastEventId(eventId: number): void {
     if (typeof localStorage === 'undefined') {
       return;
@@ -51,6 +68,7 @@ export class WebSocketTransport implements Transport {
       return;
     }
 
+    localStorage.removeItem(this.getStorageKey('clientId'));
     localStorage.removeItem(this.getStorageKey('lastEventId'));
   }
 
@@ -71,6 +89,9 @@ export class WebSocketTransport implements Transport {
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
     this.clearReconnectTimeout();
     this.clearConnectionTimeout();
+
+    // Try to restore previous session
+    this.restoreSessionState(roomId);
 
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.send({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
@@ -100,6 +121,7 @@ export class WebSocketTransport implements Transport {
 
     this.socket?.close();
     this.socket = null;
+    this.clientId = null;
     this.lastJoin = null;
     this.reconnectAttempts = 0;
     this.connectionSucceeded = false;
@@ -146,6 +168,13 @@ export class WebSocketTransport implements Transport {
       }
 
       const msg = parsed as PokerServerMessage;
+
+      // Store client ID from join response
+      if (msg.type === 'joined' && typeof msg.clientId === 'string') {
+        this.clientId = msg.clientId;
+        this.saveClientId(msg.clientId);
+      }
+
       this.handlers.onMessage(msg);
     });
 

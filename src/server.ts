@@ -213,7 +213,20 @@ async function handleJoinMessage(
     removeClientFromRoom(state.currentRoom, state.clientId);
   }
 
-  const clientId = generateId();
+  // Try to reuse clientId for existing participant with same fingerprint (session restoration)
+  let clientId: string;
+  const existingParticipantWithFingerprint = msg.fingerprint
+    ? Array.from(room.participants.values()).find((p) => p.fingerprint === msg.fingerprint)
+    : null;
+  
+  if (existingParticipantWithFingerprint) {
+    // Reuse existing clientId for this fingerprint (user refreshed page)
+    clientId = existingParticipantWithFingerprint.id;
+  } else {
+    // Generate new clientId for new participant
+    clientId = generateId();
+  }
+
   state.clientId = clientId;
   state.currentRoom = room;
 
