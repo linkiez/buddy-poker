@@ -199,7 +199,7 @@ async function handleJoinMessage(
   }
 
   // Check if fingerprint is already in use by another participant
-  let existingParticipantWithFingerprint: { id: string; name: string; vote: string | null; fingerprint: string | null } | null = null;
+  let existingParticipantWithFingerprint: PokerParticipantState | null = null;
   if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
     existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
       (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
@@ -226,15 +226,21 @@ async function handleJoinMessage(
   if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
     // Reuse existing clientId for this fingerprint (user refreshed page, no active connection)
     clientId = existingParticipantWithFingerprint.id;
+    // Preserve existing participant state (especially vote) and update mutable fields
+    room.participants.set(clientId, { 
+      ...existingParticipantWithFingerprint, 
+      name, 
+      fingerprint: msg.fingerprint ?? null 
+    });
   } else {
     // Generate new clientId for new participant
     clientId = generateId();
+    room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
   }
 
   state.clientId = clientId;
   state.currentRoom = room;
 
-  room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
   room.sockets.set(clientId, socket);
 
   if (!room.ownerId) {

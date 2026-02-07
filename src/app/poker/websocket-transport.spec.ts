@@ -71,6 +71,8 @@ describe('WebSocketTransport', () => {
     MockWebSocket.instances.length = 0;
     setLocation('http://example.com/');
     (globalThis as any).WebSocket = MockWebSocket;
+    // Clean up localStorage to prevent test pollution
+    delete (globalThis as any).localStorage;
   });
 
   it('should connect and send join message', () => {
@@ -300,7 +302,7 @@ describe('WebSocketTransport', () => {
     expect(handlers.onMessage).toHaveBeenCalledWith(joinedMessage);
   });
 
-  it('should restore clientId from localStorage on reconnect', () => {
+  it('should update localStorage when server provides new clientId', () => {
     const localStorage = {
       data: { 'bp_clientId_room-1': 'client-123' } as Record<string, string>,
       getItem(key: string): string | null {

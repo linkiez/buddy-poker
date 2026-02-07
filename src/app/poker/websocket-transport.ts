@@ -39,7 +39,7 @@ export class WebSocketTransport implements Transport {
     return `bp_${suffix}_${this.roomId}`;
   }
 
-  private restoreSessionState(roomId: string): void {
+  private restoreSessionState(): void {
     if (typeof localStorage === 'undefined') {
       return;
     }
@@ -93,7 +93,7 @@ export class WebSocketTransport implements Transport {
     this.clearConnectionTimeout();
 
     // Try to restore previous session
-    this.restoreSessionState(roomId);
+    this.restoreSessionState();
 
     if (this.socket?.readyState === WebSocket.OPEN) {
       this.send({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
