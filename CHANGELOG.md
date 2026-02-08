@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/linkiez/buddy-poker/compare/v1.5.0...v1.6.0) (2026-02-08)
+
+
+### Features
+
+* disparar nova versão ([89e98d0](https://github.com/linkiez/buddy-poker/commit/89e98d07008cbb8f611454125960aecc0dc0b286))
+
 # [1.5.0](https://github.com/linkiez/buddy-poker/compare/v1.4.0...v1.5.0) (2026-02-08)
 
 
