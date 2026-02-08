@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 function extractRoomIdFromUrl(url: string): string {
   const parsed = new URL(url);
@@ -7,6 +7,12 @@ function extractRoomIdFromUrl(url: string): string {
     throw new Error(`Unexpected room URL: ${url}`);
   }
   return match[1];
+}
+
+async function applyTestFingerprint(context: BrowserContext, fingerprint: string) {
+  await context.addInitScript((fp) => {
+    (window as unknown as { __TEST_FINGERPRINT?: string }).__TEST_FINGERPRINT = fp;
+  }, fingerprint);
 }
 
 async function waitForParticipantCount(page: Page, count: number, timeout = 15000) {
@@ -44,6 +50,11 @@ async function ensureJoinedFromJoinCard(page: Page, name: string) {
   await joinButton.click();
 }
 
+async function expectParticipantVote(page: Page, name: string, vote: string) {
+  const row = page.locator('.participants li', { hasText: name });
+  await expect(row.locator('.vote-front', { hasText: vote })).toHaveCount(1);
+}
+
 test('can open a room without name and join via form', async ({ page }) => {
   await page.goto('/room/e2e-join-with-form');
 
@@ -61,6 +72,7 @@ test('moderator can run a round with two participants (WS + SSR)', async ({ brow
   const aliceContext = await browser.newContext({
     permissions: ['clipboard-read', 'clipboard-write'],
   });
+  await applyTestFingerprint(aliceContext, 'e2e-alice');
   const alicePage = await aliceContext.newPage();
 
   await alicePage.goto('/');
@@ -82,6 +94,7 @@ test('moderator can run a round with two participants (WS + SSR)', async ({ brow
   const bobContext = await browser.newContext({
     permissions: ['clipboard-read', 'clipboard-write'],
   });
+  await applyTestFingerprint(bobContext, 'e2e-bob');
   const bobPage = await bobContext.newPage();
 
   const bobParams = new URLSearchParams();
@@ -111,11 +124,8 @@ test('moderator can run a round with two participants (WS + SSR)', async ({ brow
   await alicePage.getByRole('button', { name: 'Revelar' }).click();
   await expect(alicePage.getByText('votos revelados')).toBeVisible();
 
-  const aliceRow = alicePage.locator('li', { hasText: 'Alice' });
-  await expect(aliceRow.locator('.vote-front')).toHaveText('5');
-
-  const bobRow = alicePage.locator('li', { hasText: 'Bob' });
-  await expect(bobRow.locator('.vote-front')).toHaveText('8');
+  await expectParticipantVote(alicePage, 'Alice', '5');
+  await expectParticipantVote(alicePage, 'Bob', '8');
 
   await alicePage.getByRole('button', { name: 'Resetar' }).click();
   await expect(alicePage.getByText('cartas na mesa')).toBeVisible();
@@ -126,6 +136,7 @@ test('moderator can run a round with two participants (WS + SSR)', async ({ brow
 
 test('joining an existing room without token is rejected (from 2nd participant on)', async ({ browser }) => {
   const aliceContext = await browser.newContext();
+  await applyTestFingerprint(aliceContext, 'e2e-alice');
   const alicePage = await aliceContext.newPage();
 
   await alicePage.goto('/');
@@ -145,6 +156,7 @@ test('joining an existing room without token is rejected (from 2nd participant o
     .toBeTruthy();
 
   const eveContext = await browser.newContext();
+  await applyTestFingerprint(eveContext, 'e2e-eve');
   const evePage = await eveContext.newPage();
   await evePage.goto(`${roomOrigin}/room/${roomId}?name=Eve`);
 
@@ -159,6 +171,7 @@ test('joining an existing room without token is rejected (from 2nd participant o
 test('same user cannot join room with different identity (fingerprint validation)', async ({ browser }) => {
   // Use same browser context to ensure same fingerprint
   const context = await browser.newContext();
+  await applyTestFingerprint(context, 'e2e-fixed-fingerprint');
   const alicePage = await context.newPage();
 
   // Alice creates room

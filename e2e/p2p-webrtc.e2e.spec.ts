@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Page } from '@playwright/test';
 
 function extractRoomIdFromUrl(url: string): string {
   const parsed = new URL(url);
@@ -7,6 +7,12 @@ function extractRoomIdFromUrl(url: string): string {
     throw new Error(`Unexpected room URL: ${url}`);
   }
   return match[1];
+}
+
+async function applyTestFingerprint(context: BrowserContext, fingerprint: string) {
+  await context.addInitScript((fp) => {
+    (window as unknown as { __TEST_FINGERPRINT?: string }).__TEST_FINGERPRINT = fp;
+  }, fingerprint);
 }
 
 async function ensureJoinedFromJoinCard(page: Page, name: string) {
@@ -62,9 +68,15 @@ async function waitForParticipantCount(page: Page, count: number, timeout = 1500
   );
 }
 
+async function expectParticipantVote(page: Page, name: string, vote: string) {
+  const row = page.locator('.participants li', { hasText: name });
+  await expect(row.locator('.vote-front', { hasText: vote })).toHaveCount(1);
+}
+
 test.describe('P2P WebRTC - Basic Connection', () => {
   test('two peers connect via P2P', async ({ browser }) => {
     const aliceContext = await browser.newContext();
+    await applyTestFingerprint(aliceContext, 'e2e-alice');
     const alicePage = await aliceContext.newPage();
 
     // Alice creates room
@@ -89,6 +101,7 @@ test.describe('P2P WebRTC - Basic Connection', () => {
 
     // Bob joins
     const bobContext = await browser.newContext();
+    await applyTestFingerprint(bobContext, 'e2e-bob');
     const bobPage = await bobContext.newPage();
     const bobParams = new URLSearchParams();
     bobParams.set('name', 'Bob');
@@ -117,11 +130,8 @@ test.describe('P2P WebRTC - Basic Connection', () => {
     await alicePage.getByRole('button', { name: 'Revelar' }).click();
     await expect(alicePage.getByText('votos revelados')).toBeVisible();
 
-    const aliceRow = alicePage.locator('li', { hasText: 'Alice' });
-    await expect(aliceRow.locator('.vote-front')).toHaveText('5');
-
-    const bobRow = alicePage.locator('li', { hasText: 'Bob' });
-    await expect(bobRow.locator('.vote-front')).toHaveText('8');
+    await expectParticipantVote(alicePage, 'Alice', '5');
+    await expectParticipantVote(alicePage, 'Bob', '8');
 
     await bobContext.close();
     await aliceContext.close();
@@ -136,6 +146,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // Alice creates room
     const aliceContext = await browser.newContext();
+    await applyTestFingerprint(aliceContext, 'e2e-alice');
     const alicePage = await aliceContext.newPage();
     contexts.push(aliceContext);
     pages.push(alicePage);
@@ -161,6 +172,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
     // Bob and Charlie join
     for (const name of ['Bob', 'Charlie']) {
       const context = await browser.newContext();
+      await applyTestFingerprint(context, `e2e-${name.toLowerCase()}`);
       const page = await context.newPage();
       contexts.push(context);
       pages.push(page);
@@ -193,8 +205,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // Verify votes visible to all
     for (let i = 0; i < names.length; i++) {
-      const row = alicePage.locator('li', { hasText: names[i] });
-      await expect(row.locator('.vote-front')).toHaveText(votes[i]);
+      await expectParticipantVote(alicePage, names[i], votes[i]);
     }
 
     // Cleanup
@@ -210,6 +221,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
 
     // First peer creates room
     const firstContext = await browser.newContext();
+    await applyTestFingerprint(firstContext, 'e2e-peer1');
     const firstPage = await firstContext.newPage();
     contexts.push(firstContext);
     pages.push(firstPage);
@@ -233,6 +245,7 @@ test.describe('P2P WebRTC - Mesh Networking', () => {
     // Join remaining peers (up to 8 total)
     for (let i = 2; i <= peerCount; i++) {
       const context = await browser.newContext();
+      await applyTestFingerprint(context, `e2e-peer${i}`);
       const page = await context.newPage();
       contexts.push(context);
       pages.push(page);
@@ -277,6 +290,7 @@ test.describe('P2P WebRTC - Fallback Scenarios', () => {
 
     // First peer creates room
     const firstContext = await browser.newContext();
+    await applyTestFingerprint(firstContext, 'e2e-peer1');
     const firstPage = await firstContext.newPage();
     contexts.push(firstContext);
     pages.push(firstPage);
@@ -300,6 +314,7 @@ test.describe('P2P WebRTC - Fallback Scenarios', () => {
     // Join 8 more peers (9 total)
     for (let i = 2; i <= peerCount; i++) {
       const context = await browser.newContext();
+      await applyTestFingerprint(context, `e2e-peer${i}`);
       const page = await context.newPage();
       contexts.push(context);
       pages.push(page);
@@ -339,6 +354,7 @@ test.describe('P2P WebRTC - Fallback Scenarios', () => {
 test.describe('P2P WebRTC - Peer Disconnection', () => {
   test('room continues when a peer disconnects', async ({ browser }) => {
     const aliceContext = await browser.newContext();
+    await applyTestFingerprint(aliceContext, 'e2e-alice');
     const alicePage = await aliceContext.newPage();
 
     await alicePage.goto('/');
@@ -361,6 +377,7 @@ test.describe('P2P WebRTC - Peer Disconnection', () => {
 
     // Bob joins
     const bobContext = await browser.newContext();
+    await applyTestFingerprint(bobContext, 'e2e-bob');
     const bobPage = await bobContext.newPage();
     const bobParams = new URLSearchParams();
     bobParams.set('name', 'Bob');
@@ -370,6 +387,7 @@ test.describe('P2P WebRTC - Peer Disconnection', () => {
 
     // Charlie joins
     const charlieContext = await browser.newContext();
+    await applyTestFingerprint(charlieContext, 'e2e-charlie');
     const charliePage = await charlieContext.newPage();
     const charlieParams = new URLSearchParams();
     charlieParams.set('name', 'Charlie');

@@ -9,6 +9,11 @@ let cachedFingerprint: string | null = null;
  * @returns A promise that resolves to the fingerprint string
  */
 export async function getBrowserFingerprint(): Promise<string> {
+  const testFingerprint = (globalThis as { __TEST_FINGERPRINT?: string }).__TEST_FINGERPRINT;
+  if (typeof testFingerprint === 'string' && testFingerprint.trim()) {
+    return testFingerprint;
+  }
+
   if (cachedFingerprint) {
     return cachedFingerprint;
   }
