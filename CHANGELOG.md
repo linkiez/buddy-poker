@@ -1,3 +1,16 @@
+# [1.5.0](https://github.com/linkiez/buddy-poker/compare/v1.4.0...v1.5.0) (2026-02-08)
+
+
+### Bug Fixes
+
+* estabilizar e2e e alinhar dependências do Angular ([8740285](https://github.com/linkiez/buddy-poker/commit/8740285516e319617b13e644a45b0b61309469a6))
+
+
+### Features
+
+* adicionar validação de fingerprint para prevenir múltiplas identidades ([503711e](https://github.com/linkiez/buddy-poker/commit/503711ec9044b9f2c4c5330388b871ee71970ade)), closes [#fingerprint-validation](https://github.com/linkiez/buddy-poker/issues/fingerprint-validation)
+* implement session management for HttpPollingTransport, WebRtcTransport, and WebSocketTransport ([8e65c5e](https://github.com/linkiez/buddy-poker/commit/8e65c5ebac327ac547b7def62ea8262a297c37e5))
+
 # [1.4.0](https://github.com/linkiez/buddy-poker/compare/v1.3.0...v1.4.0) (2026-01-13)
 
 
