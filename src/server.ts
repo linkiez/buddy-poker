@@ -199,13 +199,21 @@ async function handleJoinMessage(
   }
 
   // Check if fingerprint is already in use by another participant
+  let existingParticipantWithFingerprint: PokerParticipantState | null = null;
   if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
-    const existingParticipant = Array.from(room.participants.values()).find(
+    existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
       (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
-    );
-    if (existingParticipant) {
-      sendError(socket, 'Você já está participando desta sala com outra identidade.');
-      return;
+    ) ?? null;
+    
+    if (existingParticipantWithFingerprint) {
+      // Check if this participant has an active socket connection
+      const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
+      if (hasActiveSocket) {
+        // Active connection exists - reject to prevent duplicate sessions
+        sendError(socket, 'Você já está participando desta sala com outra identidade.');
+        return;
+      }
+      // No active socket - allow session restoration (will reuse clientId below)
     }
   }
 
@@ -213,11 +221,26 @@ async function handleJoinMessage(
     removeClientFromRoom(state.currentRoom, state.clientId);
   }
 
-  const clientId = generateId();
+  // Try to reuse clientId for existing participant with same fingerprint (session restoration)
+  let clientId: string;
+  if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
+    // Reuse existing clientId for this fingerprint (user refreshed page, no active connection)
+    clientId = existingParticipantWithFingerprint.id;
+    // Preserve existing participant state (especially vote) and update mutable fields
+    room.participants.set(clientId, { 
+      ...existingParticipantWithFingerprint, 
+      name, 
+      fingerprint: msg.fingerprint ?? null 
+    });
+  } else {
+    // Generate new clientId for new participant
+    clientId = generateId();
+    room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
+  }
+
   state.clientId = clientId;
   state.currentRoom = room;
 
-  room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
   room.sockets.set(clientId, socket);
 
   if (!room.ownerId) {

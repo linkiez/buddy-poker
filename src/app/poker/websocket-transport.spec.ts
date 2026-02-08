@@ -71,6 +71,8 @@ describe('WebSocketTransport', () => {
     MockWebSocket.instances.length = 0;
     setLocation('http://example.com/');
     (globalThis as any).WebSocket = MockWebSocket;
+    // Clean up localStorage to prevent test pollution
+    delete (globalThis as any).localStorage;
   });
 
   it('should connect and send join message', () => {
@@ -255,5 +257,122 @@ describe('WebSocketTransport', () => {
     transport.connect('room-1', 'Test User');
 
     expect(MockWebSocket.instances[0].url).toBe('wss://example.com/ws');
+  });
+
+  it('should save clientId to localStorage when receiving joined message', () => {
+    const localStorage = {
+      data: {} as Record<string, string>,
+      getItem(key: string): string | null {
+        return this.data[key] ?? null;
+      },
+      setItem(key: string, value: string): void {
+        this.data[key] = value;
+      },
+      removeItem(key: string): void {
+        delete this.data[key];
+      },
+    };
+
+    (globalThis as any).localStorage = localStorage;
+
+    const handlers: TransportEventHandlers = {
+      onStatusChange: vi.fn(),
+      onMessage: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    const transport = new WebSocketTransport(handlers);
+    transport.connect('room-1', 'Test User');
+
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Send joined message with clientId
+    const joinedMessage = {
+      type: 'joined',
+      clientId: 'client-123',
+      roomId: 'room-1',
+    };
+    ws.message(JSON.stringify(joinedMessage));
+
+    // Verify clientId is saved to localStorage
+    expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-123');
+
+    // Verify message was forwarded to handler
+    expect(handlers.onMessage).toHaveBeenCalledWith(joinedMessage);
+  });
+
+  it('should update localStorage when server provides new clientId', () => {
+    const localStorage = {
+      data: { 'bp_clientId_room-1': 'client-123' } as Record<string, string>,
+      getItem(key: string): string | null {
+        return this.data[key] ?? null;
+      },
+      setItem(key: string, value: string): void {
+        this.data[key] = value;
+      },
+      removeItem(key: string): void {
+        delete this.data[key];
+      },
+    };
+
+    (globalThis as any).localStorage = localStorage;
+
+    const handlers: TransportEventHandlers = {
+      onStatusChange: vi.fn(),
+      onMessage: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    const transport = new WebSocketTransport(handlers);
+    transport.connect('room-1', 'Test User');
+
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    // Send a different clientId from server (fingerprint-based restoration happens server-side)
+    const joinedMessage = {
+      type: 'joined',
+      clientId: 'client-456',
+      roomId: 'room-1',
+    };
+    ws.message(JSON.stringify(joinedMessage));
+
+    // Verify the new clientId from server overwrites localStorage
+    expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-456');
+  });
+
+  it('should clear clientId from localStorage on disconnect', () => {
+    const localStorage = {
+      data: { 'bp_clientId_room-1': 'client-123' } as Record<string, string>,
+      getItem(key: string): string | null {
+        return this.data[key] ?? null;
+      },
+      setItem(key: string, value: string): void {
+        this.data[key] = value;
+      },
+      removeItem(key: string): void {
+        delete this.data[key];
+      },
+    };
+
+    (globalThis as any).localStorage = localStorage;
+
+    const handlers: TransportEventHandlers = {
+      onStatusChange: vi.fn(),
+      onMessage: vi.fn(),
+      onError: vi.fn(),
+    };
+
+    const transport = new WebSocketTransport(handlers);
+    transport.connect('room-1', 'Test User');
+
+    const ws = MockWebSocket.instances[0];
+    ws.open();
+
+    transport.disconnect();
+
+    // Verify clientId is removed from localStorage
+    expect(localStorage.getItem('bp_clientId_room-1')).toBeNull();
   });
 });
