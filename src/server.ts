@@ -178,7 +178,7 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
 async function handleJoinMessage(
   state: PokerConnectionState,
   socket: WebSocket,
-  msg: { roomId: string; name: string; token?: string; fingerprint?: string },
+  msg: { roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string },
 ): Promise<void> {
   const room = await getOrCreateRoom(msg.roomId);
   const name = normalizeName(msg.name);
@@ -201,19 +201,32 @@ async function handleJoinMessage(
   // Check if fingerprint is already in use by another participant
   let existingParticipantWithFingerprint: PokerParticipantState | null = null;
   if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
+    // Use provided clientId (from localStorage) if available, otherwise use state.clientId
+    const currentClientId = msg.clientId ?? state.clientId;
     existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
-      (p) => p.fingerprint === msg.fingerprint && p.id !== state.clientId,
+      (p) => p.fingerprint === msg.fingerprint && p.id !== currentClientId,
     ) ?? null;
     
     if (existingParticipantWithFingerprint) {
       // Check if this participant has an active socket connection
       const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
       if (hasActiveSocket) {
-        // Active connection exists - reject to prevent duplicate sessions
-        sendError(socket, 'Você já está participando desta sala com outra identidade.');
-        return;
+        // If client provided a clientId that matches the existing participant,
+        // allow session takeover (disconnect old socket, reuse clientId)
+        if (msg.clientId && msg.clientId === existingParticipantWithFingerprint.id) {
+          // Session takeover: close the old socket and reuse the clientId
+          const oldSocket = room.sockets.get(existingParticipantWithFingerprint.id);
+          if (oldSocket) {
+            oldSocket.close();
+            room.sockets.delete(existingParticipantWithFingerprint.id);
+          }
+        } else {
+          // Different clientId - reject to prevent duplicate sessions from same device
+          sendError(socket, 'Você já está participando desta sala com outra identidade.');
+          return;
+        }
       }
-      // No active socket - allow session restoration (will reuse clientId below)
+      // No active socket or session takeover - allow session restoration (will reuse clientId below)
     }
   }
 
@@ -231,6 +244,17 @@ async function handleJoinMessage(
       ...existingParticipantWithFingerprint, 
       name, 
       fingerprint: msg.fingerprint ?? null 
+    });
+  } else if (msg.clientId && room.participants.has(msg.clientId) && !room.sockets.has(msg.clientId)) {
+    // Client provided a clientId from localStorage and it exists in the room with no active socket
+    // This handles multi-tab scenarios where tabs share the same clientId via localStorage
+    clientId = msg.clientId;
+    const existingParticipant = room.participants.get(clientId)!;
+    // Preserve existing participant state and update mutable fields
+    room.participants.set(clientId, {
+      ...existingParticipant,
+      name,
+      fingerprint: msg.fingerprint ?? null
     });
   } else {
     // Generate new clientId for new participant

@@ -96,7 +96,7 @@ export class WebSocketTransport implements Transport {
     this.restoreSessionState();
 
     if (this.socket?.readyState === WebSocket.OPEN) {
-      this.send({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
+      this.send({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}), ...(this.clientId ? { clientId: this.clientId } : {}) });
       return;
     }
 
@@ -159,6 +159,7 @@ export class WebSocketTransport implements Transport {
           name: this.lastJoin.name,
           ...(this.lastJoin.token ? { token: this.lastJoin.token } : {}),
           ...(this.lastJoin.fingerprint ? { fingerprint: this.lastJoin.fingerprint } : {}),
+          ...(this.clientId ? { clientId: this.clientId } : {}),
         });
       }
     });

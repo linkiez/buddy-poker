@@ -1,5 +1,5 @@
 export type PokerWsMessageFromClient =
-  | { type: 'join'; roomId: string; name: string; token?: string; fingerprint?: string }
+  | { type: 'join'; roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string }
   | { type: 'vote'; value: string }
   | { type: 'reveal' }
   | { type: 'reset' }
@@ -31,6 +31,7 @@ export function parsePokerWsMessageFromClient(raw: string): PokerWsMessageFromCl
       const name = msg['name'];
       const token = msg['token'];
       const fingerprint = msg['fingerprint'];
+      const clientId = msg['clientId'];
 
       if (typeof roomId !== 'string' || typeof name !== 'string') {
         return null;
@@ -42,6 +43,7 @@ export function parsePokerWsMessageFromClient(raw: string): PokerWsMessageFromCl
         name,
         ...(typeof token === 'string' ? { token } : {}),
         ...(typeof fingerprint === 'string' ? { fingerprint } : {}),
+        ...(typeof clientId === 'string' ? { clientId } : {}),
       };
     }
 
