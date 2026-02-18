@@ -211,7 +211,7 @@ async function handleJoinMessage(
       // Check if this participant has an active socket connection
       const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
       if (hasActiveSocket) {
-        // Active session with same fingerprint but different clientId exists - reject
+        // Another clientId with the same fingerprint is already actively connected - reject
         sendError(socket, 'Você já está participando desta sala com outra identidade.');
         return;
       }
@@ -259,22 +259,28 @@ async function handleJoinMessage(
       fingerprint: msg.fingerprint ?? null 
     });
   } else if (msg.clientId && room.participants.has(msg.clientId) && !room.sockets.has(msg.clientId)) {
-    // Client provided a clientId from localStorage and it exists in the room with no active socket
+    // Client explicitly requested to reuse an existing clientId
     // Validate fingerprint to prevent session hijacking
-    const existingParticipant = room.participants.get(msg.clientId)!;
-    if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint && existingParticipant.fingerprint === msg.fingerprint) {
-      // Fingerprint matches - allow clientId reuse
-      clientId = msg.clientId;
-      // Preserve existing participant state and update mutable fields
-      room.participants.set(clientId, {
-        ...existingParticipant,
-        name,
-        fingerprint: msg.fingerprint ?? null
-      });
+    if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
+      const existingParticipant = room.participants.get(msg.clientId)!;
+      if (existingParticipant.fingerprint === msg.fingerprint) {
+        // Fingerprint matches - allow clientId reuse
+        clientId = msg.clientId;
+        // Preserve existing participant state and update mutable fields
+        room.participants.set(clientId, {
+          ...existingParticipant,
+          name,
+          fingerprint: msg.fingerprint ?? null
+        });
+      } else {
+        // Fingerprint doesn't match - reject to prevent session hijacking
+        sendError(socket, 'Você já está participando desta sala com outra identidade.');
+        return;
+      }
     } else {
-      // Fingerprint doesn't match or validation disabled - generate new clientId for security
-      clientId = generateId();
-      room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: msg.fingerprint ?? null });
+      // Fingerprint validation is disabled or missing - reject to prevent session hijacking
+      sendError(socket, 'Você já está participando desta sala com outra identidade.');
+      return;
     }
   } else {
     // Generate new clientId for new participant
