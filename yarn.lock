@@ -397,22 +397,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@angular/compiler@npm:21.0.6":
-  version: 21.0.6
-  resolution: "@angular/compiler@npm:21.0.6"
+"@angular/compiler@npm:21.0.7":
+  version: 21.0.7
+  resolution: "@angular/compiler@npm:21.0.7"
   dependencies:
     tslib: "npm:^2.3.0"
-  checksum: 10c0/def0f12562da3ebec21d3cf2b6a47e3f6882c604eb1b4c80a2ff6ad04677afcb77c45a6562ac1df01a04f7e6dc1ba2d2deeecd9654a36809e644466eb4521b1f
+  checksum: 10c0/945d867633a7c3d0cbd801ab6e3cebab1ecdad2bea1953610180ed89c8bc7c66a2d8519c59bdbae0b115f50184a337d4cd738c9457784e7ade9d82e47493cef3
   languageName: node
   linkType: hard
 
-"@angular/core@npm:21.0.6":
-  version: 21.0.6
-  resolution: "@angular/core@npm:21.0.6"
+"@angular/core@npm:21.1.4":
+  version: 21.1.4
+  resolution: "@angular/core@npm:21.1.4"
   dependencies:
     tslib: "npm:^2.3.0"
   peerDependencies:
-    "@angular/compiler": 21.0.6
+    "@angular/compiler": 21.1.4
     rxjs: ^6.5.3 || ^7.4.0
     zone.js: ~0.15.0 || ~0.16.0
   peerDependenciesMeta:
@@ -420,7 +420,7 @@ __metadata:
       optional: true
     zone.js:
       optional: true
-  checksum: 10c0/c3ec2569b196be9a6c5b1c9939652aa3e65eea42a74d844050de795a3507008f3867f8e08664920a4f00d043cf08f472e2fa0d82fb48e8c0a3ba7a9d0d549ae0
+  checksum: 10c0/46cae4dca416e71d8b1754e5091049a470c3ee9b69e0979cbb11060dbc5e5279c012c6236b8949151dd43f87087e783e13d62a07f7e5d1d61ad2ef56900dd8d3
   languageName: node
   linkType: hard
 
@@ -4195,9 +4195,9 @@ __metadata:
     "@angular/cdk": "npm:21.0.6"
     "@angular/cli": "npm:21.0.6"
     "@angular/common": "npm:21.0.6"
-    "@angular/compiler": "npm:21.0.6"
+    "@angular/compiler": "npm:21.0.7"
     "@angular/compiler-cli": "npm:21.0.6"
-    "@angular/core": "npm:21.0.6"
+    "@angular/core": "npm:21.1.4"
     "@angular/forms": "npm:21.0.6"
     "@angular/platform-browser": "npm:21.0.6"
     "@angular/platform-server": "npm:21.0.6"
@@ -8969,11 +8969,11 @@ __metadata:
   linkType: hard
 
 "qs@npm:^6.14.0, qs@npm:^6.14.1":
-  version: 6.14.1
-  resolution: "qs@npm:6.14.1"
+  version: 6.14.2
+  resolution: "qs@npm:6.14.2"
   dependencies:
     side-channel: "npm:^1.1.0"
-  checksum: 10c0/0e3b22dc451f48ce5940cbbc7c7d9068d895074f8c969c0801ac15c1313d1859c4d738e46dc4da2f498f41a9ffd8c201bd9fb12df67799b827db94cc373d2613
+  checksum: 10c0/646110124476fc9acf3c80994c8c3a0600cbad06a4ede1c9e93341006e8426d64e85e048baf8f0c4995f0f1bf0f37d1f3acc5ec1455850b81978792969a60ef6
   languageName: node
   linkType: hard
 
