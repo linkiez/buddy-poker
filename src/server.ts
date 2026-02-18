@@ -211,22 +211,29 @@ async function handleJoinMessage(
       // Check if this participant has an active socket connection
       const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
       if (hasActiveSocket) {
-        // If client provided a clientId that matches the existing participant,
-        // allow session takeover (disconnect old socket, reuse clientId)
-        if (msg.clientId && msg.clientId === existingParticipantWithFingerprint.id) {
-          // Session takeover: close the old socket and reuse the clientId
-          const oldSocket = room.sockets.get(existingParticipantWithFingerprint.id);
-          if (oldSocket) {
-            oldSocket.close();
-            room.sockets.delete(existingParticipantWithFingerprint.id);
-          }
-        } else {
-          // Different clientId - reject to prevent duplicate sessions from same device
-          sendError(socket, 'Você já está participando desta sala com outra identidade.');
-          return;
-        }
+        // Different clientId - reject to prevent duplicate sessions from same device
+        sendError(socket, 'Você já está participando desta sala com outra identidade.');
+        return;
       }
-      // No active socket or session takeover - allow session restoration (will reuse clientId below)
+      // No active socket - allow session restoration (will reuse clientId below)
+    }
+  }
+  
+  // Check if client provided a clientId that already has an active socket (session takeover)
+  if (msg.clientId && room.participants.has(msg.clientId) && room.sockets.has(msg.clientId)) {
+    // Verify fingerprint matches (prevent session hijacking)
+    const existingParticipant = room.participants.get(msg.clientId)!;
+    if (existingParticipant.fingerprint === msg.fingerprint) {
+      // Same fingerprint - allow session takeover (disconnect old socket)
+      const oldSocket = room.sockets.get(msg.clientId);
+      if (oldSocket) {
+        oldSocket.close();
+        room.sockets.delete(msg.clientId);
+      }
+    } else {
+      // Different fingerprint - reject to prevent session hijacking
+      sendError(socket, 'Você já está participando desta sala com outra identidade.');
+      return;
     }
   }
 
