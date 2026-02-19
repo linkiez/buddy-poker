@@ -70,6 +70,40 @@ describe('parsePokerWsMessageFromClient', () => {
     });
   });
 
+  it('should parse join message (with clientId)', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', clientId: 'c1' })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+      clientId: 'c1',
+    });
+  });
+
+  it('should parse join message (with all optional fields)', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', token: 't', fingerprint: 'fp123', clientId: 'c1' })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+      token: 't',
+      fingerprint: 'fp123',
+      clientId: 'c1',
+    });
+  });
+
+  it('should ignore non-string clientId on join', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', clientId: 123 })),
+    ).toEqual({
+      type: 'join',
+      roomId: 'r',
+      name: 'n',
+    });
+  });
+
   it('should ignore non-string fingerprint on join', () => {
     expect(
       parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', fingerprint: 123 })),

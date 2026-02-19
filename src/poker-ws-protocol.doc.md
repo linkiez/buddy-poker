@@ -14,6 +14,7 @@ O objetivo é centralizar:
 - Converter `raw: string` em uma mensagem tipada (ou `null`).
 - Aplicar validação mínima coerente com o servidor:
   - `join` exige `roomId` e `name` como `string`.
+  - `join` aceita `token`, `fingerprint` e `clientId` opcionais como `string`.
   - `vote` exige `value` como `string`.
   - `reveal` e `reset` não exigem campos adicionais.
 
@@ -48,7 +49,7 @@ flowchart TD
 - JSON inválido retorna `null`.
 - JSON válido, porém não-objeto (ex.: `null`, `[]`, `123`) retorna `null`.
 - Campos extras são ignorados.
-- `token` em `join` só é aceito quando é `string`.
+- `token`, `fingerprint` e `clientId` em `join` só são aceitos quando são `string`.
 
 ## Exemplos
 
@@ -58,6 +59,9 @@ parsePokerWsMessageFromClient('{');
 
 parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n' }));
 // { type: 'join', roomId: 'r', name: 'n' }
+
+parsePokerWsMessageFromClient(JSON.stringify({ type: 'join', roomId: 'r', name: 'n', clientId: 'c1' }));
+// { type: 'join', roomId: 'r', name: 'n', clientId: 'c1' }
 
 parsePokerWsMessageFromClient(JSON.stringify({ type: 'vote', value: '5' }));
 // { type: 'vote', value: '5' }

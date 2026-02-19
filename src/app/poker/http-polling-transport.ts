@@ -99,7 +99,7 @@ export class HttpPollingTransport implements Transport {
 
     try {
       // Send join action
-      await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) });
+      await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}), ...(this.clientId ? { clientId: this.clientId } : {}) });
 
       this.setStatus('connected');
       this.startPolling();
