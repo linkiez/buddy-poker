@@ -168,7 +168,7 @@ test('joining an existing room without token is rejected (from 2nd participant o
   await aliceContext.close();
 });
 
-test('same user cannot join room with different identity (fingerprint validation)', async ({ browser }) => {
+test('same user can restore session in another tab (fingerprint validation)', async ({ browser }) => {
   // Use same browser context to ensure same fingerprint
   const context = await browser.newContext();
   await applyTestFingerprint(context, 'e2e-fixed-fingerprint');
@@ -202,13 +202,10 @@ test('same user cannot join room with different identity (fingerprint validation
 
   await ensureJoinedFromJoinCard(evePage, 'Eve');
 
-  // Should see error message about already being in the room
-  await expect(evePage.getByText('Você já está participando desta sala com outra identidade.')).toBeVisible({
-    timeout: 15_000,
-  });
+  // Should restore same participant session instead of creating a duplicate participant
+  await waitForParticipantCount(evePage, 1);
 
-  // Alice should still see only 1 participant
-  await waitForParticipantCount(alicePage, 1);
+  await expect(evePage.getByText('Você já está participando desta sala com outra identidade.')).toHaveCount(0);
 
   await context.close();
 });
