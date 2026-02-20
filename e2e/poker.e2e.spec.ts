@@ -168,7 +168,7 @@ test('joining an existing room without token is rejected (from 2nd participant o
   await aliceContext.close();
 });
 
-test('same user can restore session in another tab (fingerprint validation)', async ({ browser }) => {
+test('same user can restore session in second page (fingerprint validation)', async ({ browser }) => {
   // Use same browser context to ensure same fingerprint
   const context = await browser.newContext();
   await applyTestFingerprint(context, 'e2e-fixed-fingerprint');

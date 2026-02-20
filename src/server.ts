@@ -737,9 +737,8 @@ app.post('/api/poker/action', async (req, res) => {
 
       let existingParticipantWithFingerprint: PokerParticipantState | null = null;
       if (!DISABLE_FINGERPRINT_VALIDATION && fingerprint) {
-        const currentClientId = requestedClientId;
         existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
-          (p) => p.fingerprint === fingerprint && p.id !== currentClientId,
+          (p) => p.fingerprint === fingerprint && p.id !== requestedClientId,
         ) ?? null;
 
         if (existingParticipantWithFingerprint) {
@@ -767,7 +766,11 @@ app.post('/api/poker/action', async (req, res) => {
       } else if (requestedClientId && room.participants.has(requestedClientId)) {
         const hasActiveSocket = room.sockets.has(requestedClientId);
         const hasActiveHttpSession = httpSessions.has(requestedClientId);
-        const existingParticipant = room.participants.get(requestedClientId)!;
+        const existingParticipant = room.participants.get(requestedClientId);
+        if (!existingParticipant) {
+          res.status(404).json({ error: 'Participant not found' });
+          return;
+        }
 
         if (DISABLE_FINGERPRINT_VALIDATION) {
           clientId = requestedClientId;
