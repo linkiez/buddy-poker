@@ -731,9 +731,79 @@ app.post('/api/poker/action', async (req, res) => {
         return;
       }
 
-      const clientId = existingClientId ?? generateId();
+      const requestedClientId =
+        typeof msg.clientId === 'string' ? msg.clientId : existingClientId;
+      const fingerprint = typeof msg.fingerprint === 'string' ? msg.fingerprint : undefined;
 
-      room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: null });
+      let existingParticipantWithFingerprint: PokerParticipantState | null = null;
+      if (!DISABLE_FINGERPRINT_VALIDATION && fingerprint) {
+        existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
+          (p) => p.fingerprint === fingerprint && p.id !== requestedClientId,
+        ) ?? null;
+
+        if (existingParticipantWithFingerprint) {
+          const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
+          const hasActiveHttpSession = httpSessions.has(existingParticipantWithFingerprint.id);
+          if (hasActiveSocket || hasActiveHttpSession) {
+            res.status(403).json({ error: 'Você já está participando desta sala com outra identidade.' });
+            return;
+          }
+        }
+      }
+
+      let clientId: string;
+      if (
+        existingParticipantWithFingerprint &&
+        !room.sockets.has(existingParticipantWithFingerprint.id) &&
+        !httpSessions.has(existingParticipantWithFingerprint.id)
+      ) {
+        clientId = existingParticipantWithFingerprint.id;
+        room.participants.set(clientId, {
+          ...existingParticipantWithFingerprint,
+          name,
+          fingerprint: fingerprint ?? null,
+        });
+      } else if (requestedClientId && room.participants.has(requestedClientId)) {
+        const hasActiveSocket = room.sockets.has(requestedClientId);
+        const hasActiveHttpSession = httpSessions.has(requestedClientId);
+        const existingParticipant = room.participants.get(requestedClientId);
+        if (!existingParticipant) {
+          res.status(404).json({ error: 'Participant not found' });
+          return;
+        }
+
+        if (DISABLE_FINGERPRINT_VALIDATION) {
+          clientId = requestedClientId;
+        } else if (fingerprint) {
+          if (existingParticipant.fingerprint !== fingerprint) {
+            res.status(403).json({ error: 'Você já está participando desta sala com outra identidade.' });
+            return;
+          }
+          clientId = requestedClientId;
+        } else {
+          res.status(403).json({ error: 'Você já está participando desta sala com outra identidade.' });
+          return;
+        }
+
+        if (hasActiveSocket) {
+          const oldSocket = room.sockets.get(requestedClientId);
+          oldSocket?.close();
+          room.sockets.delete(requestedClientId);
+        }
+        if (hasActiveHttpSession) {
+          httpSessions.delete(requestedClientId);
+          eventQueue.delete(requestedClientId);
+        }
+
+        room.participants.set(clientId, {
+          ...existingParticipant,
+          name,
+          fingerprint: fingerprint ?? null,
+        });
+      } else {
+        clientId = generateId();
+        room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: fingerprint ?? null });
+      }
 
       if (!room.ownerId) {
         room.ownerId = clientId;
