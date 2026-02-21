@@ -1,3 +1,10 @@
+## [1.6.1](https://github.com/linkiez/buddy-poker/compare/v1.6.0...v1.6.1) (2026-02-21)
+
+
+### Bug Fixes
+
+* align e2e session behavior and persist HTTP polling sessions ([3bef331](https://github.com/linkiez/buddy-poker/commit/3bef331b09767f80f7be3d1c707e6b06ea9d1705))
+
 # [1.6.0](https://github.com/linkiez/buddy-poker/compare/v1.5.0...v1.6.0) (2026-02-08)
 
 
