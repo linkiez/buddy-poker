@@ -485,9 +485,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@angular/ssr@npm:21.0.6":
-  version: 21.0.6
-  resolution: "@angular/ssr@npm:21.0.6"
+"@angular/ssr@npm:21.1.5":
+  version: 21.1.5
+  resolution: "@angular/ssr@npm:21.1.5"
   dependencies:
     tslib: "npm:^2.3.0"
   peerDependencies:
@@ -498,7 +498,7 @@ __metadata:
   peerDependenciesMeta:
     "@angular/platform-server":
       optional: true
-  checksum: 10c0/a69068d9f0e9d2a5f88466945bb3e0de79aeef7d24c0c70d3e2c1b6f917ad9690b1304737385e4e2d46533ee139e34d014fde83593ab97b59177bf5ddcfa6e9b
+  checksum: 10c0/6fb27794cffd4f3ddeec4e7c2e77e6d26794d14fe3618de5a7b41e7102c873a217838e9786b90c859bde54841a702da483e881e48a0499c2df7649db0f88c4e1
   languageName: node
   linkType: hard
 
@@ -4202,7 +4202,7 @@ __metadata:
     "@angular/platform-browser": "npm:21.0.6"
     "@angular/platform-server": "npm:21.0.6"
     "@angular/router": "npm:21.0.6"
-    "@angular/ssr": "npm:21.0.6"
+    "@angular/ssr": "npm:21.1.5"
     "@fingerprintjs/fingerprintjs": "npm:^5.0.1"
     "@playwright/test": "npm:^1.57.0"
     "@primeuix/themes": "npm:^2.0.2"
