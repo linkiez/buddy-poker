@@ -121,7 +121,6 @@ export class HttpPollingTransport implements Transport {
   disconnect(): void {
     this.manualDisconnect = true;
     this.stopPolling();
-    this.clearSessionStorage();
     this.clientId = null;
     this.lastEventId = 0;
     this.lastJoin = null;

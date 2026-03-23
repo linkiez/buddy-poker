@@ -342,7 +342,7 @@ describe('WebSocketTransport', () => {
     expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-456');
   });
 
-  it('should clear clientId from localStorage on disconnect', () => {
+  it('should preserve clientId in localStorage on disconnect for session restoration', () => {
     const localStorage = {
       data: { 'bp_clientId_room-1': 'client-123' } as Record<string, string>,
       getItem(key: string): string | null {
@@ -372,7 +372,7 @@ describe('WebSocketTransport', () => {
 
     transport.disconnect();
 
-    // Verify clientId is removed from localStorage
-    expect(localStorage.getItem('bp_clientId_room-1')).toBeNull();
+    // Verify clientId is preserved in localStorage for refresh/reconnect restoration
+    expect(localStorage.getItem('bp_clientId_room-1')).toBe('client-123');
   });
 });

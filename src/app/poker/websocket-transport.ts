@@ -119,7 +119,6 @@ export class WebSocketTransport implements Transport {
     this.manualDisconnect = true;
     this.clearReconnectTimeout();
     this.clearConnectionTimeout();
-    this.clearSessionStorage();
 
     this.socket?.close();
     this.socket = null;
