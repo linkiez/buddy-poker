@@ -397,22 +397,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@angular/compiler@npm:21.2.4":
-  version: 21.2.4
-  resolution: "@angular/compiler@npm:21.2.4"
+"@angular/compiler@npm:21.0.6":
+  version: 21.0.6
+  resolution: "@angular/compiler@npm:21.0.6"
   dependencies:
     tslib: "npm:^2.3.0"
-  checksum: 10c0/fc9b03ee0cab5a3ddfd826cbbf1bf46533e525b65196b51f8e4052677053b6dcd3fc19ef551508ddb8efc436ba5da889476daeaaa6ac2b91561d651591ef58ac
+  checksum: 10c0/def0f12562da3ebec21d3cf2b6a47e3f6882c604eb1b4c80a2ff6ad04677afcb77c45a6562ac1df01a04f7e6dc1ba2d2deeecd9654a36809e644466eb4521b1f
   languageName: node
   linkType: hard
 
-"@angular/core@npm:21.2.4":
-  version: 21.2.4
-  resolution: "@angular/core@npm:21.2.4"
+"@angular/core@npm:21.0.6":
+  version: 21.0.6
+  resolution: "@angular/core@npm:21.0.6"
   dependencies:
     tslib: "npm:^2.3.0"
   peerDependencies:
-    "@angular/compiler": 21.2.4
+    "@angular/compiler": 21.0.6
     rxjs: ^6.5.3 || ^7.4.0
     zone.js: ~0.15.0 || ~0.16.0
   peerDependenciesMeta:
@@ -420,7 +420,7 @@ __metadata:
       optional: true
     zone.js:
       optional: true
-  checksum: 10c0/3c0fc1f9d6391b97765601a8006be90542cb53e85c5a83e6c3388c2e36dd9a1249942200a11ce6f2af5be4e9990852f3b0c0db802415bd80b28581c2abd0919d
+  checksum: 10c0/c3ec2569b196be9a6c5b1c9939652aa3e65eea42a74d844050de795a3507008f3867f8e08664920a4f00d043cf08f472e2fa0d82fb48e8c0a3ba7a9d0d549ae0
   languageName: node
   linkType: hard
 
@@ -485,9 +485,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@angular/ssr@npm:21.1.5":
-  version: 21.1.5
-  resolution: "@angular/ssr@npm:21.1.5"
+"@angular/ssr@npm:21.0.6":
+  version: 21.0.6
+  resolution: "@angular/ssr@npm:21.0.6"
   dependencies:
     tslib: "npm:^2.3.0"
   peerDependencies:
@@ -498,7 +498,7 @@ __metadata:
   peerDependenciesMeta:
     "@angular/platform-server":
       optional: true
-  checksum: 10c0/6fb27794cffd4f3ddeec4e7c2e77e6d26794d14fe3618de5a7b41e7102c873a217838e9786b90c859bde54841a702da483e881e48a0499c2df7649db0f88c4e1
+  checksum: 10c0/a69068d9f0e9d2a5f88466945bb3e0de79aeef7d24c0c70d3e2c1b6f917ad9690b1304737385e4e2d46533ee139e34d014fde83593ab97b59177bf5ddcfa6e9b
   languageName: node
   linkType: hard
 
@@ -4195,14 +4195,14 @@ __metadata:
     "@angular/cdk": "npm:21.0.6"
     "@angular/cli": "npm:21.0.6"
     "@angular/common": "npm:21.0.6"
-    "@angular/compiler": "npm:21.2.4"
+    "@angular/compiler": "npm:21.0.6"
     "@angular/compiler-cli": "npm:21.0.6"
-    "@angular/core": "npm:21.2.4"
+    "@angular/core": "npm:21.0.6"
     "@angular/forms": "npm:21.0.6"
     "@angular/platform-browser": "npm:21.0.6"
     "@angular/platform-server": "npm:21.0.6"
     "@angular/router": "npm:21.0.6"
-    "@angular/ssr": "npm:21.1.5"
+    "@angular/ssr": "npm:21.0.6"
     "@fingerprintjs/fingerprintjs": "npm:^5.0.1"
     "@playwright/test": "npm:^1.57.0"
     "@primeuix/themes": "npm:^2.0.2"

@@ -22,5 +22,5 @@ export async function getBrowserFingerprint(): Promise<string> {
   const result = await fp.get();
   cachedFingerprint = result.visitorId;
 
-  return cachedFingerprint;
+  return result.visitorId;
 }
