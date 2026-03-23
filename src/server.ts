@@ -199,7 +199,7 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
     });
   }
 
-  if (room.participants.size === 0) {
+  if (room.participants.size === 0 && !room.ownerReservation) {
     rooms.delete(room.roomId);
     void roomPersistence.delete(room.roomId).catch(() => undefined);
     return;
@@ -719,6 +719,14 @@ setInterval(() => {
     if (now - session.createdAt > httpSessionTtlMs) {
       httpSessions.delete(clientId);
       eventQueue.delete(clientId);
+    }
+  }
+
+  for (const [roomId, room] of rooms.entries()) {
+    syncOwnerReservation(room, now);
+    if (room.participants.size === 0 && !room.ownerReservation) {
+      rooms.delete(roomId);
+      void roomPersistence.delete(roomId).catch(() => undefined);
     }
   }
 }, httpCleanupIntervalMs);
