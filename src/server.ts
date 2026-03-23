@@ -295,10 +295,14 @@ async function handleJoinMessage(
     !!msg.fingerprint &&
     !!room.ownerReservation &&
     room.ownerReservation.fingerprint === msg.fingerprint;
+  const reservedOwnerMatchesClientId =
+    !!room.ownerReservation &&
+    !!msg.clientId &&
+    room.ownerReservation.clientId === msg.clientId;
 
   // Try to reuse clientId for existing participant with same fingerprint (session restoration)
   let clientId: string;
-  if (reservedOwnerMatchesFingerprint && room.ownerReservation) {
+  if ((reservedOwnerMatchesFingerprint || reservedOwnerMatchesClientId) && room.ownerReservation) {
     clientId = room.ownerReservation.clientId;
     room.participants.set(clientId, {
       id: clientId,
@@ -819,9 +823,13 @@ app.post('/api/poker/action', async (req, res) => {
         !!fingerprint &&
         !!room.ownerReservation &&
         room.ownerReservation.fingerprint === fingerprint;
+      const reservedOwnerMatchesClientId =
+        !!room.ownerReservation &&
+        !!requestedClientId &&
+        room.ownerReservation.clientId === requestedClientId;
 
       let clientId: string;
-      if (reservedOwnerMatchesFingerprint && room.ownerReservation) {
+      if ((reservedOwnerMatchesFingerprint || reservedOwnerMatchesClientId) && room.ownerReservation) {
         clientId = room.ownerReservation.clientId;
         room.participants.set(clientId, {
           id: clientId,
