@@ -16,6 +16,12 @@ import { createLazyRedisClientRoomPersistence } from './redis-room-persistence';
 import { createInMemoryRoomPersistence, type RoomPersistence } from './room-persistence';
 import { isTokenAllowed } from './room-token';
 import { appendRoundHistory, type PokerRoundHistoryEntry } from './round-history';
+import {
+  releaseExpiredOwnerReservation,
+  reserveOwnerOnDisconnect,
+  restoreReservedOwner,
+  type OwnerReservation,
+} from './owner-reservation';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -35,6 +41,7 @@ type PokerParticipantState = {
 type PokerRoomState = {
   roomId: string;
   ownerId: string | null;
+  ownerReservation: OwnerReservation | null;
   token: string;
   reveal: boolean;
   rounds: PokerRoundHistoryEntry[];
@@ -60,6 +67,20 @@ const roomTtlSeconds = (() => {
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed <= 0) {
     return 86_400;
+  }
+
+  return Math.floor(parsed);
+})();
+
+const ownerReservationTtlMs = (() => {
+  const raw = process.env['OWNER_RESERVATION_TTL_MS'];
+  if (!raw) {
+    return 30_000;
+  }
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    return 30_000;
   }
 
   return Math.floor(parsed);
@@ -110,6 +131,7 @@ async function getOrCreateRoom(roomIdRaw: string): Promise<PokerRoomState> {
   const room: PokerRoomState = {
     roomId,
     ownerId: null,
+    ownerReservation: null,
     token,
     reveal: false,
     rounds,
@@ -134,7 +156,12 @@ function sendError(socket: WebSocket, message: string): void {
   socket.send(JSON.stringify({ type: 'error', message }));
 }
 
+function syncOwnerReservation(room: PokerRoomState, now = Date.now()): void {
+  releaseExpiredOwnerReservation(room, now);
+}
+
 function broadcastRoomState(room: PokerRoomState): void {
+  syncOwnerReservation(room);
   const participants = Array.from(room.participants.values()).map((p) => ({
     id: p.id,
     name: p.name,
@@ -158,11 +185,18 @@ function broadcastRoomState(room: PokerRoomState): void {
 }
 
 function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
+  const participant = room.participants.get(clientId) ?? null;
   room.participants.delete(clientId);
   room.sockets.delete(clientId);
+  room.webrtcPeers.delete(clientId);
 
   if (room.ownerId === clientId) {
-    room.ownerId = room.participants.keys().next().value ?? null;
+    reserveOwnerOnDisconnect(room, {
+      clientId,
+      fingerprint: participant?.fingerprint ?? null,
+      now: Date.now(),
+      ttlMs: ownerReservationTtlMs,
+    });
   }
 
   if (room.participants.size === 0) {
@@ -181,6 +215,7 @@ async function handleJoinMessage(
   msg: { roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string },
 ): Promise<void> {
   const room = await getOrCreateRoom(msg.roomId);
+  syncOwnerReservation(room);
   const name = normalizeName(msg.name);
   if (!name) {
     return;
@@ -255,9 +290,23 @@ async function handleJoinMessage(
     removeClientFromRoom(state.currentRoom, state.clientId);
   }
 
+  const reservedOwnerMatchesFingerprint =
+    !DISABLE_FINGERPRINT_VALIDATION &&
+    !!msg.fingerprint &&
+    !!room.ownerReservation &&
+    room.ownerReservation.fingerprint === msg.fingerprint;
+
   // Try to reuse clientId for existing participant with same fingerprint (session restoration)
   let clientId: string;
-  if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
+  if (reservedOwnerMatchesFingerprint && room.ownerReservation) {
+    clientId = room.ownerReservation.clientId;
+    room.participants.set(clientId, {
+      id: clientId,
+      name,
+      vote: null,
+      fingerprint: msg.fingerprint ?? null,
+    });
+  } else if (existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) {
     // Reuse existing clientId for this fingerprint (user refreshed page, no active connection)
     clientId = existingParticipantWithFingerprint.id;
     // Preserve existing participant state (especially vote) and update mutable fields
@@ -312,7 +361,7 @@ async function handleJoinMessage(
 
   room.sockets.set(clientId, socket);
 
-  if (!room.ownerId) {
+  if (!restoreReservedOwner(room, clientId) && !room.ownerId) {
     room.ownerId = clientId;
   }
 
@@ -361,6 +410,8 @@ function handleRevealMessage(state: PokerConnectionState, socket: WebSocket): vo
     return;
   }
 
+  syncOwnerReservation(state.currentRoom);
+
   const guard = assertModeratorAction({
     ownerId: state.currentRoom.ownerId,
     clientId: state.clientId,
@@ -381,6 +432,8 @@ function handleResetMessage(state: PokerConnectionState, socket: WebSocket): voi
   if (!state.currentRoom || !state.clientId) {
     return;
   }
+
+  syncOwnerReservation(state.currentRoom);
 
   const guard = assertModeratorAction({
     ownerId: state.currentRoom.ownerId,
@@ -633,6 +686,7 @@ function queueEventForHttpClient(clientId: string, message: unknown): void {
 }
 
 function broadcastRoomStateHttp(room: PokerRoomState): void {
+  syncOwnerReservation(room);
   const participants = Array.from(room.participants.values()).map((p) => ({
     id: p.id,
     name: p.name,
@@ -713,6 +767,7 @@ app.post('/api/poker/action', async (req, res) => {
 
     if (msg.type === 'join') {
       const room = await getOrCreateRoom(msg.roomId);
+      syncOwnerReservation(room);
       const name = normalizeName(msg.name);
       if (!name) {
         res.status(400).json({ error: 'Invalid name' });
@@ -751,8 +806,22 @@ app.post('/api/poker/action', async (req, res) => {
         }
       }
 
+      const reservedOwnerMatchesFingerprint =
+        !DISABLE_FINGERPRINT_VALIDATION &&
+        !!fingerprint &&
+        !!room.ownerReservation &&
+        room.ownerReservation.fingerprint === fingerprint;
+
       let clientId: string;
-      if (
+      if (reservedOwnerMatchesFingerprint && room.ownerReservation) {
+        clientId = room.ownerReservation.clientId;
+        room.participants.set(clientId, {
+          id: clientId,
+          name,
+          vote: null,
+          fingerprint: fingerprint ?? null,
+        });
+      } else if (
         existingParticipantWithFingerprint &&
         !room.sockets.has(existingParticipantWithFingerprint.id) &&
         !httpSessions.has(existingParticipantWithFingerprint.id)
@@ -805,7 +874,7 @@ app.post('/api/poker/action', async (req, res) => {
         room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: fingerprint ?? null });
       }
 
-      if (!room.ownerId) {
+      if (!restoreReservedOwner(room, clientId) && !room.ownerId) {
         room.ownerId = clientId;
       }
 
@@ -876,6 +945,8 @@ app.post('/api/poker/action', async (req, res) => {
     }
 
     if (msg.type === 'reveal') {
+      syncOwnerReservation(room);
+
       const guard = assertModeratorAction({
         ownerId: room.ownerId,
         clientId: existingClientId,
@@ -895,6 +966,8 @@ app.post('/api/poker/action', async (req, res) => {
     }
 
     if (msg.type === 'reset') {
+      syncOwnerReservation(room);
+
       const guard = assertModeratorAction({
         ownerId: room.ownerId,
         clientId: existingClientId,
