@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 
-import { parseRoomInput } from './room-link';
+import { normalizeRoomId, parseRoomInput } from './room-link';
+
+describe('normalizeRoomId', () => {
+  it('should normalize room id to a URL-safe slug compatible with the server', () => {
+    expect(normalizeRoomId('  Sala Legal 123  ')).toBe('sala-legal-123');
+  });
+
+  it('should truncate normalized room id to 32 chars', () => {
+    expect(normalizeRoomId('abcdefghijklmnopqrstuvwxyz1234567890')).toBe('abcdefghijklmnopqrstuvwxyz123456');
+  });
+});
 
 describe('parseRoomInput', () => {
   it('should return empty roomId for empty input', () => {
@@ -9,6 +19,10 @@ describe('parseRoomInput', () => {
 
   it('should parse a plain room id', () => {
     expect(parseRoomInput('scrumzada-abc123')).toEqual({ roomId: 'scrumzada-abc123', token: null });
+  });
+
+  it('should normalize a typed room id before routing', () => {
+    expect(parseRoomInput('  Sala Legal 123  ')).toEqual({ roomId: 'sala-legal-123', token: null });
   });
 
   it('should parse room id with token query', () => {
@@ -21,6 +35,13 @@ describe('parseRoomInput', () => {
   it('should parse a full URL', () => {
     expect(parseRoomInput('https://example.com/room/scrumzada-abc123?token=sekret')).toEqual({
       roomId: 'scrumzada-abc123',
+      token: 'sekret',
+    });
+  });
+
+  it('should decode and normalize room id from URL paths', () => {
+    expect(parseRoomInput('https://example.com/room/Sala%20Legal?token=sekret')).toEqual({
+      roomId: 'sala-legal',
       token: 'sekret',
     });
   });

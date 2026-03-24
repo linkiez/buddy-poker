@@ -3,6 +3,22 @@ export type ParsedRoomInput = {
   token: string | null;
 };
 
+export function normalizeRoomId(input: string): string {
+  return input
+    .trim()
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9-]/g, '-')
+    .slice(0, 32);
+}
+
+function decodeSegment(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
 function parseAsUrl(input: string): URL | null {
   try {
     return new URL(input);
@@ -25,22 +41,32 @@ export function parseRoomInput(input: string): ParsedRoomInput {
     return { roomId: '', token: null };
   }
 
-  const url = parseAsUrl(raw) ?? parseAsUrlWithBase(raw);
+  const absoluteUrl = parseAsUrl(raw);
+  const url = absoluteUrl ?? parseAsUrlWithBase(raw);
   if (url) {
-    const segments = url.pathname.split('/').filter(Boolean);
+    const segments = url.pathname.split('/').filter(Boolean).map(decodeSegment);
     const roomIndex = segments.indexOf('room');
+    const rawRoomId = raw.split('?', 2)[0];
+    const looksLikeAbsoluteUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(rawRoomId);
 
-    const roomId = roomIndex >= 0 ? segments[roomIndex + 1] ?? '' : raw.split('?')[0];
+    const roomId = roomIndex >= 0
+      ? normalizeRoomId(segments[roomIndex + 1] ?? '')
+      : absoluteUrl || looksLikeAbsoluteUrl
+        ? rawRoomId
+        : normalizeRoomId(rawRoomId);
     const token = url.searchParams.get('token');
     return { roomId: roomId.trim(), token: token?.trim() || null };
   }
 
   const [roomIdPart, queryPart] = raw.split('?', 2);
+  const looksLikeAbsoluteUrl = /^[a-z][a-z0-9+.-]*:\/\//i.test(roomIdPart);
+  const normalizedRoomId = looksLikeAbsoluteUrl ? roomIdPart.trim() : normalizeRoomId(roomIdPart);
+
   if (!queryPart) {
-    return { roomId: roomIdPart.trim(), token: null };
+    return { roomId: normalizedRoomId, token: null };
   }
 
   const params = new URLSearchParams(queryPart);
   const token = params.get('token');
-  return { roomId: roomIdPart.trim(), token: token?.trim() || null };
+  return { roomId: normalizedRoomId, token: token?.trim() || null };
 }
