@@ -221,18 +221,6 @@ async function handleJoinMessage(
     return;
   }
 
-  const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
-  const tokenAllowed = isTokenAllowed({
-    roomToken: room.token,
-    providedToken: msg.token,
-    allowMissing: isFirstJoin,
-  });
-
-  if (!tokenAllowed) {
-    sendError(socket, 'Token da sala inválido. Peça o link correto para o moderador.');
-    return;
-  }
-
   // Check if fingerprint is already in use by another participant
   let existingParticipantWithFingerprint: PokerParticipantState | null = null;
   if (!DISABLE_FINGERPRINT_VALIDATION && msg.fingerprint) {
@@ -241,7 +229,7 @@ async function handleJoinMessage(
     existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
       (p) => p.fingerprint === msg.fingerprint && p.id !== currentClientId,
     ) ?? null;
-    
+
     if (existingParticipantWithFingerprint) {
       // Check if this participant has an active socket connection
       const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
@@ -253,7 +241,42 @@ async function handleJoinMessage(
       // No active socket - allow session restoration (will reuse clientId below)
     }
   }
-  
+
+  const reservedOwnerMatchesFingerprint =
+    !DISABLE_FINGERPRINT_VALIDATION &&
+    !!msg.fingerprint &&
+    !!room.ownerReservation &&
+    room.ownerReservation.fingerprint === msg.fingerprint;
+  const reservedOwnerMatchesClientId =
+    !!room.ownerReservation &&
+    !!msg.clientId &&
+    room.ownerReservation.clientId === msg.clientId;
+  const requestedClientIdCanRejoin =
+    !!msg.clientId &&
+    room.participants.has(msg.clientId) &&
+    !room.sockets.has(msg.clientId) &&
+    (
+      DISABLE_FINGERPRINT_VALIDATION ||
+      (!!msg.fingerprint && room.participants.get(msg.clientId)?.fingerprint === msg.fingerprint)
+    );
+
+  const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
+  const tokenAllowed = isTokenAllowed({
+    roomToken: room.token,
+    providedToken: msg.token,
+    allowMissing:
+      isFirstJoin ||
+      reservedOwnerMatchesFingerprint ||
+      reservedOwnerMatchesClientId ||
+      (!!existingParticipantWithFingerprint && !room.sockets.has(existingParticipantWithFingerprint.id)) ||
+      requestedClientIdCanRejoin,
+  });
+
+  if (!tokenAllowed) {
+    sendError(socket, 'Token da sala inválido. Peça o link correto para o moderador.');
+    return;
+  }
+
   // Check if client provided a clientId that already has an active socket (session takeover)
   if (msg.clientId && room.participants.has(msg.clientId) && room.sockets.has(msg.clientId)) {
     // Session takeover requires fingerprint validation to prevent hijacking (unless disabled)
@@ -289,16 +312,6 @@ async function handleJoinMessage(
   if (state.currentRoom && state.clientId) {
     removeClientFromRoom(state.currentRoom, state.clientId);
   }
-
-  const reservedOwnerMatchesFingerprint =
-    !DISABLE_FINGERPRINT_VALIDATION &&
-    !!msg.fingerprint &&
-    !!room.ownerReservation &&
-    room.ownerReservation.fingerprint === msg.fingerprint;
-  const reservedOwnerMatchesClientId =
-    !!room.ownerReservation &&
-    !!msg.clientId &&
-    room.ownerReservation.clientId === msg.clientId;
 
   // Try to reuse clientId for existing participant with same fingerprint (session restoration)
   let clientId: string;
@@ -786,18 +799,6 @@ app.post('/api/poker/action', async (req, res) => {
         return;
       }
 
-      const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
-      const tokenAllowed = isTokenAllowed({
-        roomToken: room.token,
-        providedToken: msg.token,
-        allowMissing: isFirstJoin,
-      });
-
-      if (!tokenAllowed) {
-        res.status(403).json({ error: 'Token da sala inválido. Peça o link correto para o moderador.' });
-        return;
-      }
-
       const requestedClientId =
         typeof msg.clientId === 'string' ? msg.clientId : existingClientId;
       const fingerprint = typeof msg.fingerprint === 'string' ? msg.fingerprint : undefined;
@@ -827,6 +828,36 @@ app.post('/api/poker/action', async (req, res) => {
         !!room.ownerReservation &&
         !!requestedClientId &&
         room.ownerReservation.clientId === requestedClientId;
+      const requestedClientIdCanRejoin =
+        !!requestedClientId &&
+        room.participants.has(requestedClientId) &&
+        !room.sockets.has(requestedClientId) &&
+        !httpSessions.has(requestedClientId) &&
+        (
+          DISABLE_FINGERPRINT_VALIDATION ||
+          (!!fingerprint && room.participants.get(requestedClientId)?.fingerprint === fingerprint)
+        );
+
+      const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
+      const tokenAllowed = isTokenAllowed({
+        roomToken: room.token,
+        providedToken: msg.token,
+        allowMissing:
+          isFirstJoin ||
+          reservedOwnerMatchesFingerprint ||
+          reservedOwnerMatchesClientId ||
+          (
+            !!existingParticipantWithFingerprint &&
+            !room.sockets.has(existingParticipantWithFingerprint.id) &&
+            !httpSessions.has(existingParticipantWithFingerprint.id)
+          ) ||
+          requestedClientIdCanRejoin,
+      });
+
+      if (!tokenAllowed) {
+        res.status(403).json({ error: 'Token da sala inválido. Peça o link correto para o moderador.' });
+        return;
+      }
 
       let clientId: string;
       if ((reservedOwnerMatchesFingerprint || reservedOwnerMatchesClientId) && room.ownerReservation) {

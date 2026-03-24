@@ -51,6 +51,28 @@ describe('owner-reservation', () => {
     expect(room.ownerId).toBe('peer-1');
   });
 
+  it('should reserve the owner even when they were alone in the room', () => {
+    const room: OwnerReservationRoomLike = {
+      ownerId: 'owner-1',
+      ownerReservation: null,
+      participants: new Map<string, unknown>(),
+    };
+
+    reserveOwnerOnDisconnect(room, {
+      clientId: 'owner-1',
+      fingerprint: 'fp-owner',
+      now: 100,
+      ttlMs: 30_000,
+    });
+
+    expect(room.ownerId).toBe('owner-1');
+    expect(room.ownerReservation).toEqual({
+      clientId: 'owner-1',
+      fingerprint: 'fp-owner',
+      expiresAt: 30_100,
+    });
+  });
+
   it('should restore reserved ownership when the same client rejoins', () => {
     const room = createRoom();
     room.ownerId = 'owner-1';

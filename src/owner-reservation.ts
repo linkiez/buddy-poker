@@ -23,7 +23,7 @@ export function reserveOwnerOnDisconnect(
     return;
   }
 
-  if (input.fingerprint && room.participants.size > 0 && input.ttlMs > 0) {
+  if (input.fingerprint && input.ttlMs > 0) {
     room.ownerReservation = {
       clientId: input.clientId,
       fingerprint: input.fingerprint,
