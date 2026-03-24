@@ -1,8 +1,23 @@
 services:
-  buddy-poker:
+  main:
+#    image: ghcr.io/linkiez/buddy-poker:1.6.0
     build: .
     ports:
       - "4000:4000"
-    environment:
-      NODE_ENV: production
-      PORT: 4000
+    env_file:
+      - .env
+    restart: always
+    networks:
+      - NW_JCMMETAIS
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+networks:
+  NW_JCMMETAIS:
+    external: true
