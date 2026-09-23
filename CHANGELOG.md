@@ -1,3 +1,15 @@
+# [1.7.0](https://github.com/linkiez/buddy-poker/compare/v1.6.1...v1.7.0) (2026-09-23)
+
+
+### Bug Fixes
+
+* **#14:** reenviar estado para novas abas ([17e4783](https://github.com/linkiez/buddy-poker/commit/17e4783aefee05f6b785c550cdb3af4086ddd85c)), closes [#14](https://github.com/linkiez/buddy-poker/issues/14) [#14](https://github.com/linkiez/buddy-poker/issues/14)
+
+
+### Features
+
+* **#14:** adicionar recuperação de sessão HTTP-only ([4fec1ea](https://github.com/linkiez/buddy-poker/commit/4fec1eaf1bf834ae03df16b11dc06e12f1371a06)), closes [#14](https://github.com/linkiez/buddy-poker/issues/14) [#14](https://github.com/linkiez/buddy-poker/issues/14)
+
 ## [1.6.1](https://github.com/linkiez/buddy-poker/compare/v1.6.0...v1.6.1) (2026-02-21)
 
 
