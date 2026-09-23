@@ -1,3 +1,5 @@
+import { isValidRoomId } from '../../room-id';
+
 export type ParsedRoomInput = {
   roomId: string;
   token: string | null;
@@ -9,6 +11,24 @@ export function normalizeRoomId(input: string): string {
     .toLowerCase()
     .replaceAll(/[^a-z0-9-]/g, '-')
     .slice(0, 32);
+}
+
+export function isValidRoomInput(input: string): boolean {
+  const raw = input.trim();
+  if (!raw) {
+    return false;
+  }
+
+  const url = parseAsUrl(raw) ?? parseAsUrlWithBase(raw);
+  if (url) {
+    const segments = url.pathname.split('/').filter(Boolean).map(decodeSegment);
+    const roomIndex = segments.indexOf('room');
+    if (roomIndex >= 0) {
+      return isValidRoomId(segments[roomIndex + 1] ?? '');
+    }
+  }
+
+  return isValidRoomId(raw.split('?', 2)[0]);
 }
 
 function decodeSegment(value: string): string {

@@ -17,6 +17,7 @@ import { createRateLimiter } from './rate-limit';
 import { createLazyRedisClientRoomPersistence } from './redis-room-persistence';
 import { createInMemoryRoomPersistence, type RoomPersistence } from './room-persistence';
 import { isTokenAllowed } from './room-token';
+import { isValidRoomId } from './room-id';
 import { appendRoundHistory, type PokerRoundHistoryEntry } from './round-history';
 import {
   releaseExpiredOwnerReservation,
@@ -298,6 +299,11 @@ async function handleJoinMessage(
   socket: WebSocket,
   msg: { roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string },
 ): Promise<void> {
+  if (!isValidRoomId(msg.roomId)) {
+    sendError(socket, 'Nome de sala inválido. Use apenas letras, números e hífen, com até 32 caracteres.');
+    return;
+  }
+
   const room = await getOrCreateRoom(msg.roomId);
   syncOwnerReservation(room);
   const name = normalizeName(msg.name);
@@ -938,6 +944,13 @@ app.post('/api/poker/action', async (req, res) => {
     const existingClientId = req.headers['x-client-id'] as string | undefined;
 
     if (msg.type === 'join') {
+      if (typeof msg.roomId !== 'string' || !isValidRoomId(msg.roomId)) {
+        res.status(400).json({
+          error: 'Nome de sala inválido. Use apenas letras, números e hífen, com até 32 caracteres.',
+        });
+        return;
+      }
+
       const room = await getOrCreateRoom(msg.roomId);
       syncOwnerReservation(room);
       const name = normalizeName(msg.name);

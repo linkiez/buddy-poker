@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { normalizeRoomId, parseRoomInput } from './room-link';
+import { isValidRoomInput, normalizeRoomId, parseRoomInput } from './room-link';
 
 describe('normalizeRoomId', () => {
   it('should normalize room id to a URL-safe slug compatible with the server', () => {
@@ -15,6 +15,18 @@ describe('normalizeRoomId', () => {
 describe('parseRoomInput', () => {
   it('should return empty roomId for empty input', () => {
     expect(parseRoomInput('   ')).toEqual({ roomId: '', token: null });
+  });
+
+  describe('isValidRoomInput', () => {
+    it('accepts a room id and a room URL with URL-safe characters', () => {
+      expect(isValidRoomInput('scrumzada-abc123')).toBe(true);
+      expect(isValidRoomInput('https://example.com/room/scrumzada-abc123')).toBe(true);
+    });
+
+    it('rejects room names with unsupported characters', () => {
+      expect(isValidRoomInput('sala legal')).toBe(false);
+      expect(isValidRoomInput('/room/sala_legal')).toBe(false);
+    });
   });
 
   it('should parse a plain room id', () => {

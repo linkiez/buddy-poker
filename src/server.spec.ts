@@ -72,6 +72,17 @@ describe('HTTP poker server contract', () => {
     expect(token).toBeTruthy();
   });
 
+  it('rejects room names with characters that are not URL-safe', async () => {
+    const response = await postAction({
+      type: 'join',
+      roomId: 'sala invalida',
+      name: 'Moderator',
+    });
+
+    expect(response.response.status).toBe(400);
+    expect(response.body['error']).toContain('Nome de sala inválido');
+  });
+
   it('rejects a non-moderator reveal while allowing participant recovery', async () => {
     const roomId = `recovery-${Date.now()}`;
     const moderator = await postAction({ type: 'join', roomId, name: 'Moderator' });
@@ -114,7 +125,7 @@ describe('HTTP poker server contract', () => {
   });
 
   it('allows HTTP reload recovery while the previous client session is still active', async () => {
-    const roomId = `active-session-recovery-${Date.now()}`;
+    const roomId = `active-${Date.now().toString(36)}`;
     const moderator = await postAction({ type: 'join', roomId, name: 'Moderator' });
     const token = (moderator.body['message'] as { token: string }).token;
     const participant = await postAction({

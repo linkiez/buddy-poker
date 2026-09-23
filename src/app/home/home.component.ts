@@ -9,7 +9,7 @@ import { CardModule } from 'primeng/card';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 
-import { parseRoomInput } from '../poker/room-link';
+import { isValidRoomInput, parseRoomInput } from '../poker/room-link';
 
 @Component({
   selector: 'app-home',
@@ -55,6 +55,11 @@ export class HomeComponent {
 
     if (!roomId) {
       this.errorMessage.set('Informe o ID da sala (ou crie uma).');
+      return;
+    }
+
+    if (!isValidRoomInput(this.roomId)) {
+      this.errorMessage.set('O nome da sala deve conter apenas letras, números e hífen, com até 32 caracteres.');
       return;
     }
 
