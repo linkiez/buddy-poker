@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/linkiez/buddy-poker/compare/v1.7.0...v1.7.1) (2026-09-23)
+
+
+### Bug Fixes
+
+* **#14:** restaurar sessão HTTP ativa após recarga ([0e77bdb](https://github.com/linkiez/buddy-poker/commit/0e77bdb75f29c31fa50efcd4a542c8c6a446c1ab)), closes [#14](https://github.com/linkiez/buddy-poker/issues/14)
+
 # [1.7.0](https://github.com/linkiez/buddy-poker/compare/v1.6.1...v1.7.0) (2026-09-23)
 
 
