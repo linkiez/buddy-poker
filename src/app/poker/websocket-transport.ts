@@ -1,4 +1,5 @@
 import type { PokerClientMessage, PokerServerMessage } from './poker-types';
+import { getBrowserSession, migrateLegacyBrowserSession, saveBrowserSession } from './browser-session';
 import type {
     Transport,
     TransportConfig,
@@ -46,7 +47,8 @@ export class WebSocketTransport implements Transport {
 
     // Note: clientId restoration is stored for consistency with HTTP polling transport
     // For WebSocket connections, session restoration happens server-side via fingerprint matching
-    this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
+    const session = getBrowserSession(this.roomId) ?? migrateLegacyBrowserSession(this.roomId);
+    this.clientId = session?.clientId ?? localStorage.getItem(this.getStorageKey('clientId'));
   }
 
   private saveClientId(clientId: string): void {
@@ -175,6 +177,17 @@ export class WebSocketTransport implements Transport {
       if (msg.type === 'joined' && typeof msg.clientId === 'string') {
         this.clientId = msg.clientId;
         this.saveClientId(msg.clientId);
+        if (this.lastJoin) {
+          saveBrowserSession({
+            schemaVersion: 1,
+            roomId: this.lastJoin.roomId,
+            clientId: msg.clientId,
+            name: this.lastJoin.name,
+            ...(this.lastJoin.fingerprint ? { fingerprint: this.lastJoin.fingerprint } : {}),
+            lastEventId: 0,
+            updatedAt: Date.now(),
+          });
+        }
       }
 
       this.handlers.onMessage(msg);

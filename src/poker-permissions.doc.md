@@ -6,6 +6,10 @@ Regras de permissão para ações sensíveis na sala (ex.: revelar votos e reset
 
 O servidor define um **moderador** por sala (`ownerId`). Algumas mensagens só podem ser aplicadas quando `ownerId === clientId`.
 
+Após uma recarga, o cliente só recupera os controles quando o servidor valida o `clientId`, a
+impressão digital da sessão e a reserva temporária do moderador. Flags armazenadas no
+navegador nunca concedem permissão.
+
 ## Responsabilidades
 
 - Centralizar a decisão: “este cliente pode executar esta ação?”
@@ -33,6 +37,7 @@ flowchart TD
 ## Tratamento de erros e casos-limite
 
 - Quando `ownerId` é `null`, a ação é negada.
+- Uma identidade copiada com `clientId` igual, mas impressão digital diferente, é negada.
 - Mensagens de erro são sempre em pt-BR.
 
 ## Exemplos

@@ -52,7 +52,7 @@
     *ngIf="isJoined() && !isOwner()"
     class="room-message"
     severity="info"
-    text="Modo participante: só o moderador revela/reset."
+    [text]="moderatorGuidance()"
   />
 
   <div class="room-message-row" *ngIf="errorMessage() as msg">

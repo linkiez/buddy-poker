@@ -21,9 +21,15 @@ export function getModeratorGuardErrorMessage(action: ModeratorAction): string {
 export function assertModeratorAction(input: {
   ownerId: string | null;
   clientId: string;
+  ownerFingerprint?: string | null;
+  clientFingerprint?: string | null;
   action: ModeratorAction;
 }): ModeratorGuardResult {
-  if (input.ownerId !== input.clientId) {
+  if (
+    input.ownerId !== input.clientId ||
+    (input.ownerFingerprint !== undefined &&
+      input.clientFingerprint !== input.ownerFingerprint)
+  ) {
     return { ok: false, message: getModeratorGuardErrorMessage(input.action) };
   }
 

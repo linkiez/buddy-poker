@@ -82,9 +82,53 @@ describe('owner-reservation', () => {
       expiresAt: 30_100,
     };
 
-    expect(restoreReservedOwner(room, 'owner-1')).toBe(true);
+    expect(
+      restoreReservedOwner(room, {
+        clientId: 'owner-1',
+        fingerprint: 'fp-owner',
+        now: 30_000,
+      }),
+    ).toBe(true);
     expect(room.ownerReservation).toBeNull();
     expect(room.ownerId).toBe('owner-1');
+  });
+
+  it('should reject a copied client id with a different fingerprint', () => {
+    const room = createRoom();
+    room.ownerReservation = {
+      clientId: 'owner-1',
+      fingerprint: 'fp-owner',
+      expiresAt: 30_100,
+    };
+
+    expect(
+      restoreReservedOwner(room, {
+        clientId: 'owner-1',
+        fingerprint: 'copied-fingerprint',
+        now: 100,
+      }),
+    ).toBe(false);
+    expect(room.ownerReservation).not.toBeNull();
+    expect(room.ownerId).toBe('owner-1');
+  });
+
+  it('should reject an expired reservation before restoring ownership', () => {
+    const room = createRoom();
+    room.ownerReservation = {
+      clientId: 'owner-1',
+      fingerprint: 'fp-owner',
+      expiresAt: 100,
+    };
+
+    expect(
+      restoreReservedOwner(room, {
+        clientId: 'owner-1',
+        fingerprint: 'fp-owner',
+        now: 101,
+      }),
+    ).toBe(false);
+    expect(room.ownerReservation).toBeNull();
+    expect(room.ownerId).toBe('peer-1');
   });
 
   it('should release expired reservation and transfer ownership to next participant', () => {

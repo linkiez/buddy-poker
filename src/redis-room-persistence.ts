@@ -1,4 +1,8 @@
-import { buildRoomPersistenceKey, type PersistedRoomState, type RoomPersistence } from './room-persistence';
+import {
+  buildRoomPersistenceKey,
+  type PersistedRoomState,
+  type RoomPersistence,
+} from './room-persistence';
 
 export type RedisClientLike = {
   get(key: string): Promise<string | null>;
@@ -14,7 +18,7 @@ function safeJsonParse(input: string): unknown {
   }
 }
 
-function parsePersistedRoomState(raw: string): PersistedRoomState | null {
+function parsePersistedRoomState(raw: string, now: () => number): PersistedRoomState | null {
   const parsed = safeJsonParse(raw);
   if (!parsed || typeof parsed !== 'object') {
     return null;
@@ -31,18 +35,35 @@ function parsePersistedRoomState(raw: string): PersistedRoomState | null {
     return null;
   }
 
-  return {
+  const state: PersistedRoomState = {
     token,
     rounds: rounds as PersistedRoomState['rounds'],
   };
+
+  const ownerReservation = (parsed as { ownerReservation?: unknown }).ownerReservation;
+  if (isOwnerReservation(ownerReservation)) {
+    state.ownerReservation = ownerReservation;
+  }
+
+  const sessions = (parsed as { sessions?: unknown }).sessions;
+  if (Array.isArray(sessions)) {
+    const validSessions = sessions.filter(isPersistedRoomSession);
+    if (validSessions.length > 0) {
+      state.sessions = validSessions;
+    }
+  }
+
+  return removeExpiredRecoveryData(state, now());
 }
 
 export function createRedisRoomPersistenceFromClient(input: {
   client: RedisClientLike;
   keyPrefix: string;
   defaultTtlSeconds: number;
+  now?: () => number;
 }): RoomPersistence {
   const defaultTtlSeconds = Math.floor(input.defaultTtlSeconds);
+  const now = input.now ?? (() => Date.now());
 
   return {
     async get(roomId: string) {
@@ -52,7 +73,7 @@ export function createRedisRoomPersistenceFromClient(input: {
         return null;
       }
 
-      return parsePersistedRoomState(value);
+      return parsePersistedRoomState(value, now);
     },
 
     async set(roomId: string, state: PersistedRoomState, ttl) {
@@ -74,6 +95,58 @@ export function createRedisRoomPersistenceFromClient(input: {
       await input.client.del(key);
     },
   };
+}
+
+function isOwnerReservation(value: unknown): value is NonNullable<PersistedRoomState['ownerReservation']> {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['clientId'] === 'string' &&
+    typeof candidate['fingerprint'] === 'string' &&
+    typeof candidate['expiresAt'] === 'number' &&
+    Number.isFinite(candidate['expiresAt'])
+  );
+}
+
+function isPersistedRoomSession(value: unknown): value is NonNullable<PersistedRoomState['sessions']>[number] {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate['clientId'] === 'string' &&
+    typeof candidate['name'] === 'string' &&
+    (typeof candidate['fingerprint'] === 'string' || candidate['fingerprint'] === null || candidate['fingerprint'] === undefined) &&
+    (typeof candidate['vote'] === 'string' || candidate['vote'] === null || candidate['vote'] === undefined) &&
+    typeof candidate['lastSeenAt'] === 'number' &&
+    Number.isFinite(candidate['lastSeenAt']) &&
+    typeof candidate['expiresAt'] === 'number' &&
+    Number.isFinite(candidate['expiresAt'])
+  );
+}
+
+function removeExpiredRecoveryData(state: PersistedRoomState, timestamp: number): PersistedRoomState {
+  const ownerReservation =
+    state.ownerReservation && state.ownerReservation.expiresAt > timestamp
+      ? state.ownerReservation
+      : undefined;
+  const sessions = state.sessions?.filter((session) => session.expiresAt > timestamp);
+  const result = { ...state };
+
+  if (ownerReservation) {
+    result.ownerReservation = ownerReservation;
+  } else {
+    delete result.ownerReservation;
+  }
+  if (sessions && sessions.length > 0) {
+    result.sessions = sessions;
+  } else if (state.sessions) {
+    delete result.sessions;
+  }
+
+  return result;
 }
 
 export function createLazyRedisClientRoomPersistence(input: {

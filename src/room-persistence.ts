@@ -3,6 +3,23 @@ import type { PokerRoundHistoryEntry } from './round-history';
 export type PersistedRoomState = {
   token: string;
   rounds: PokerRoundHistoryEntry[];
+  ownerReservation?: PersistedOwnerReservation;
+  sessions?: PersistedRoomSession[];
+};
+
+export type PersistedOwnerReservation = {
+  clientId: string;
+  fingerprint: string;
+  expiresAt: number;
+};
+
+export type PersistedRoomSession = {
+  clientId: string;
+  name: string;
+  fingerprint?: string | null;
+  vote?: string | null;
+  lastSeenAt: number;
+  expiresAt: number;
 };
 
 export type RoomPersistenceTtl = {
@@ -46,7 +63,9 @@ export function createInMemoryRoomPersistence(options?: {
         return null;
       }
 
-      return entry.state;
+      const state = removeExpiredRecoveryData(entry.state, now());
+      entries.set(roomId, { ...entry, state });
+      return state;
     },
 
     async set(roomId: string, state: PersistedRoomState, ttl?: RoomPersistenceTtl) {
@@ -63,4 +82,26 @@ export function createInMemoryRoomPersistence(options?: {
       entries.delete(roomId);
     },
   };
+}
+
+function removeExpiredRecoveryData(state: PersistedRoomState, timestamp: number): PersistedRoomState {
+  const ownerReservation =
+    state.ownerReservation && state.ownerReservation.expiresAt > timestamp
+      ? state.ownerReservation
+      : undefined;
+  const sessions = state.sessions?.filter((session) => session.expiresAt > timestamp);
+  const result = { ...state };
+
+  if (ownerReservation) {
+    result.ownerReservation = ownerReservation;
+  } else {
+    delete result.ownerReservation;
+  }
+  if (sessions && sessions.length > 0) {
+    result.sessions = sessions;
+  } else if (state.sessions) {
+    delete result.sessions;
+  }
+
+  return result;
 }

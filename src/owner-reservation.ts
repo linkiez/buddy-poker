@@ -10,6 +10,12 @@ export type OwnerReservationRoomLike = {
   participants: Map<string, unknown>;
 };
 
+export type OwnerRestoreRequest = {
+  clientId: string;
+  fingerprint: string | null;
+  now: number;
+};
+
 export function reserveOwnerOnDisconnect(
   room: OwnerReservationRoomLike,
   input: {
@@ -37,12 +43,29 @@ export function reserveOwnerOnDisconnect(
   room.ownerId = room.participants.keys().next().value ?? null;
 }
 
-export function restoreReservedOwner(room: OwnerReservationRoomLike, clientId: string): boolean {
-  if (!room.ownerReservation || room.ownerReservation.clientId !== clientId) {
+export function restoreReservedOwner(
+  room: OwnerReservationRoomLike,
+  request: OwnerRestoreRequest | string,
+): boolean {
+  const normalizedRequest: OwnerRestoreRequest =
+    typeof request === 'string'
+      ? { clientId: request, fingerprint: null, now: Number.POSITIVE_INFINITY }
+      : request;
+  const reservation = room.ownerReservation;
+
+  if (
+    !reservation ||
+    reservation.clientId !== normalizedRequest.clientId ||
+    reservation.expiresAt <= normalizedRequest.now ||
+    reservation.fingerprint !== normalizedRequest.fingerprint
+  ) {
+    if (reservation && reservation.expiresAt <= normalizedRequest.now) {
+      releaseExpiredOwnerReservation(room, normalizedRequest.now);
+    }
     return false;
   }
 
-  room.ownerId = clientId;
+  room.ownerId = normalizedRequest.clientId;
   room.ownerReservation = null;
   return true;
 }

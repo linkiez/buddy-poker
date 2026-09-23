@@ -2,8 +2,11 @@ import { isPlatformBrowser } from '@angular/common';
 import { Injectable, PLATFORM_ID, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { getBrowserFingerprint } from './browser-fingerprint';
+import { isHttpOnlyEnabled } from './browser-session';
+import { CrossTabCoordinator } from './cross-tab-coordinator';
 import { HttpPollingTransport } from './http-polling-transport';
 import type {
+  PokerClientMessage,
   PokerRoomViewState,
   PokerServerMessage
 } from './poker-types';
@@ -15,7 +18,9 @@ type PokerWsConnectionStatus =
   | 'disconnected'
   | 'connecting'
   | 'connected'
-  | 'reconnecting';
+  | 'reconnecting'
+  | 'unavailable'
+  | 'rejoin-required';
 
 @Injectable({
   providedIn: 'root',
@@ -29,6 +34,7 @@ export class PokerWsService {
   private roomToken: string | null = null;
   private currentMode: TransportMode | null = null;
   private roomSize = 0; // Track room size for P2P eligibility
+  private coordinator: CrossTabCoordinator | null = null;
 
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -88,6 +94,19 @@ export class PokerWsService {
     this.roomId = roomId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), fingerprint };
     this.clearWsRetryTimeout();
+    this.startCrossTabCoordination(roomId);
+
+    if (!this.coordinator?.isLeader()) {
+      return;
+    }
+
+    if (isHttpOnlyEnabled()) {
+      this.switchToHttpPolling();
+      if (this.transport?.status === 'disconnected') {
+        await this.transport.connect(roomId, name, token, fingerprint);
+      }
+      return;
+    }
 
     // Try WebRTC first (if room size <= 8), then WebSocket, then HTTP
     if (!this.transport || this.shouldTryBetterTransport()) {
@@ -102,7 +121,7 @@ export class PokerWsService {
       return;
     }
 
-    this.transport?.send({ type: 'vote', roomId: this.roomId, value });
+    this.sendAction({ type: 'vote', roomId: this.roomId, value, actionId: this.createActionId() });
   }
 
   reveal(): void {
@@ -110,7 +129,7 @@ export class PokerWsService {
       return;
     }
 
-    this.transport?.send({ type: 'reveal', roomId: this.roomId });
+    this.sendAction({ type: 'reveal', roomId: this.roomId, actionId: this.createActionId() });
   }
 
   reset(): void {
@@ -118,12 +137,14 @@ export class PokerWsService {
       return;
     }
 
-    this.transport?.send({ type: 'reset', roomId: this.roomId });
+    this.sendAction({ type: 'reset', roomId: this.roomId, actionId: this.createActionId() });
   }
 
   disconnect(): void {
     this.clearWsRetryTimeout();
     this.transport?.disconnect();
+    this.coordinator?.stop();
+    this.coordinator = null;
     this.transport = null;
     this.clientId = null;
     this.roomId = null;
@@ -142,6 +163,7 @@ export class PokerWsService {
     return {
       onStatusChange: (status: TransportStatus) => {
         this.statusSubject.next(status);
+        this.coordinator?.publishStatus(status);
 
         // If WebRTC failed, fallback to WebSocket
         if (
@@ -164,12 +186,15 @@ export class PokerWsService {
         }
 
         // Schedule retry to better transport if we're in a fallback mode and connected
-        if ((this.currentMode === 'http-polling' || this.currentMode === 'websocket') && status === 'connected') {
+        if (!isHttpOnlyEnabled() && (this.currentMode === 'http-polling' || this.currentMode === 'websocket') && status === 'connected') {
           this.scheduleBetterTransportRetry();
         }
       },
       onMessage: (message: PokerServerMessage) => {
         this.handleMessage(message);
+        if (this.coordinator?.isLeader() && message.type === 'state') {
+          this.coordinator.publishState(message as PokerRoomViewState);
+        }
       },
       onError: (error: string) => {
         // Log all errors to console for debugging
@@ -196,6 +221,7 @@ export class PokerWsService {
         this.roomToken = (msg as { token: string }).token;
         this.roomTokenSubject.next(this.roomToken);
       }
+
       return;
     }
 
@@ -211,6 +237,62 @@ export class PokerWsService {
         this.stateSubject.next(state);
       }
     }
+  }
+
+  private startCrossTabCoordination(roomId: string): void {
+    if (this.coordinator && this.roomId === roomId) {
+      return;
+    }
+
+    this.coordinator?.stop();
+    this.coordinator = new CrossTabCoordinator(roomId, {
+      onState: (state) => this.handleMessage({ type: 'state', ...state }),
+      onStatus: (status) => this.statusSubject.next(status),
+      onRoleChange: (isLeader) => this.handleRoleChange(isLeader),
+      onAction: (action) => this.handleFollowerAction(action),
+    });
+    this.coordinator.start();
+  }
+
+  private sendAction(action: PokerClientMessage): void {
+    if (this.coordinator?.isLeader()) {
+      this.transport?.send(action);
+      return;
+    }
+
+    this.coordinator?.publishAction(action);
+  }
+
+  private handleRoleChange(isLeader: boolean): void {
+    if (isLeader && this.lastJoin && !this.transport) {
+      this.tryBestTransport();
+      this.connectCurrentTransport(this.transport);
+    }
+    if (!isLeader && this.transport) {
+      this.transport.disconnect();
+      this.transport = null;
+      this.currentMode = null;
+      this.modeSubject.next(null);
+    }
+  }
+
+  private handleFollowerAction(action: PokerClientMessage): void {
+    if (this.coordinator?.isLeader()) {
+      this.transport?.send(action);
+    }
+  }
+
+  private connectCurrentTransport(transport: Transport | null): void {
+    if (!transport || !this.lastJoin) {
+      return;
+    }
+
+    transport.connect(
+      this.lastJoin.roomId,
+      this.lastJoin.name,
+      this.lastJoin.token,
+      this.lastJoin.fingerprint,
+    );
   }
 
   private switchToWebRtc(): void {
@@ -233,7 +315,8 @@ export class PokerWsService {
       this.transport.connect(
         this.lastJoin.roomId,
         this.lastJoin.name,
-        this.lastJoin.token
+        this.lastJoin.token,
+        this.lastJoin.fingerprint
       );
     }
   }
@@ -261,7 +344,8 @@ export class PokerWsService {
       this.transport.connect(
         this.lastJoin.roomId,
         this.lastJoin.name,
-        this.lastJoin.token
+        this.lastJoin.token,
+        this.lastJoin.fingerprint
       );
     }
   }
@@ -280,7 +364,11 @@ export class PokerWsService {
     const oldTransport = this.transport;
     oldTransport?.disconnect();
 
-    const config = this.getTransportConfig();
+    const config = {
+      ...this.getTransportConfig(),
+      initialEventId: this.coordinator?.getCursor() ?? 0,
+      onEventCursor: (eventId: number) => this.coordinator?.setCursor(eventId),
+    };
     this.transport = new HttpPollingTransport(this.createTransportHandlers(), config);
     this.currentMode = 'http-polling';
     this.modeSubject.next('http-polling');
@@ -290,7 +378,8 @@ export class PokerWsService {
       this.transport.connect(
         this.lastJoin.roomId,
         this.lastJoin.name,
-        this.lastJoin.token
+        this.lastJoin.token,
+        this.lastJoin.fingerprint
       );
     }
   }
@@ -307,6 +396,9 @@ export class PokerWsService {
   }
 
   private scheduleBetterTransportRetry(): void {
+    if (isHttpOnlyEnabled()) {
+      return;
+    }
     this.clearWsRetryTimeout();
 
     this.wsRetryTimeoutId = setTimeout(() => {
@@ -342,6 +434,10 @@ export class PokerWsService {
   }
 
   private tryBestTransport(): void {
+    if (isHttpOnlyEnabled()) {
+      this.switchToHttpPolling();
+      return;
+    }
     // Try WebRTC if room is eligible
     if (this.isRoomEligibleForP2P() && this.isWebRtcSupported()) {
       this.switchToWebRtc();
@@ -368,6 +464,13 @@ export class PokerWsService {
       clearTimeout(this.wsRetryTimeoutId);
       this.wsRetryTimeoutId = null;
     }
+  }
+
+  private createActionId(): string {
+    if (typeof globalThis.crypto?.randomUUID === 'function') {
+      return globalThis.crypto.randomUUID();
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   private getTransportConfig() {

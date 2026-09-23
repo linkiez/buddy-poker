@@ -126,6 +126,18 @@ describe('parsePokerWsMessageFromClient', () => {
     });
   });
 
+  it('should preserve action identifiers for mutating messages', () => {
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'vote', value: '5', actionId: 'vote-1' })),
+    ).toEqual({ type: 'vote', value: '5', actionId: 'vote-1' });
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'reveal', actionId: 'reveal-1' })),
+    ).toEqual({ type: 'reveal', actionId: 'reveal-1' });
+    expect(
+      parsePokerWsMessageFromClient(JSON.stringify({ type: 'reset', actionId: 'reset-1' })),
+    ).toEqual({ type: 'reset', actionId: 'reset-1' });
+  });
+
   it('should return null for invalid vote payload', () => {
     expect(parsePokerWsMessageFromClient(JSON.stringify({ type: 'vote', value: 5 }))).toBeNull();
   });

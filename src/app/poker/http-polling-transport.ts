@@ -1,4 +1,10 @@
 import type { PokerClientMessage, PokerServerMessage } from './poker-types';
+import {
+    clearBrowserSession,
+    getBrowserSession,
+    migrateLegacyBrowserSession,
+    saveBrowserSession as writeBrowserSession,
+} from './browser-session';
 import type {
     Transport,
     TransportConfig,
@@ -6,6 +12,11 @@ import type {
     TransportMode,
     TransportStatus,
 } from './transport.types';
+
+type HttpPollingTransportConfig = TransportConfig & {
+  initialEventId?: number;
+  onEventCursor?: (eventId: number) => void;
+};
 
 export class HttpPollingTransport implements Transport {
   readonly mode: TransportMode = 'http-polling';
@@ -18,10 +29,13 @@ export class HttpPollingTransport implements Transport {
   private manualDisconnect = false;
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
 
-  private readonly config: Required<TransportConfig>;
+  private readonly config: Required<TransportConfig> & {
+    initialEventId: number;
+    onEventCursor: (eventId: number) => void;
+  };
   private readonly handlers: TransportEventHandlers;
 
-  constructor(handlers: TransportEventHandlers, config: TransportConfig = {}) {
+  constructor(handlers: TransportEventHandlers, config: HttpPollingTransportConfig = {}) {
     this.handlers = handlers;
     this.config = {
       reconnectMaxAttempts: config.reconnectMaxAttempts ?? Infinity,
@@ -29,6 +43,8 @@ export class HttpPollingTransport implements Transport {
       reconnectMaxDelayMs: config.reconnectMaxDelayMs ?? 10_000,
       pollingIntervalMs: config.pollingIntervalMs ?? 3_000,
       connectionTimeoutMs: config.connectionTimeoutMs ?? 10_000,
+      initialEventId: config.initialEventId ?? 0,
+      onEventCursor: config.onEventCursor ?? (() => undefined),
     };
   }
 
@@ -37,18 +53,32 @@ export class HttpPollingTransport implements Transport {
   }
 
   private restoreSessionState(roomId: string): void {
-    if (typeof localStorage === 'undefined') {
+    const session = getBrowserSession(roomId) ?? migrateLegacyBrowserSession(roomId);
+    if (session) {
+      this.clientId = session.clientId;
+      this.lastEventId = session.lastEventId;
       return;
     }
 
-    this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
-    const lastEventIdStr = localStorage.getItem(this.getStorageKey('lastEventId'));
-    if (lastEventIdStr) {
-      const parsed = Number.parseInt(lastEventIdStr, 10);
-      if (Number.isFinite(parsed) && parsed > 0) {
-        this.lastEventId = parsed;
-      }
+    if (typeof localStorage !== 'undefined') {
+      this.clientId = localStorage.getItem(this.getStorageKey('clientId'));
     }
+  }
+
+  private persistBrowserSession(): void {
+    if (!this.clientId || !this.lastJoin) {
+      return;
+    }
+
+    writeBrowserSession({
+      schemaVersion: 1,
+      roomId: this.roomId,
+      clientId: this.clientId,
+      name: this.lastJoin.name,
+      ...(this.lastJoin.fingerprint ? { fingerprint: this.lastJoin.fingerprint } : {}),
+      lastEventId: this.lastEventId,
+      updatedAt: Date.now(),
+    });
   }
 
   private saveClientId(clientId: string): void {
@@ -65,6 +95,7 @@ export class HttpPollingTransport implements Transport {
     }
 
     localStorage.setItem(this.getStorageKey('lastEventId'), eventId.toString());
+    this.persistBrowserSession();
   }
 
   private clearSessionStorage(): void {
@@ -90,6 +121,7 @@ export class HttpPollingTransport implements Transport {
   async connect(roomId: string, name: string, token?: string, fingerprint?: string): Promise<void> {
     this.manualDisconnect = false;
     this.roomId = roomId;
+    this.lastEventId = this.config.initialEventId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}) };
 
     // Try to restore previous session
@@ -99,7 +131,13 @@ export class HttpPollingTransport implements Transport {
 
     try {
       // Send join action
-      await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}), ...(this.clientId ? { clientId: this.clientId } : {}) });
+      const joined = await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}), ...(this.clientId ? { clientId: this.clientId } : {}) });
+      if (!joined) {
+        if (this._status !== 'rejoin-required') {
+          this.setStatus('unavailable');
+        }
+        return;
+      }
 
       this.setStatus('connected');
       this.startPolling();
@@ -127,7 +165,7 @@ export class HttpPollingTransport implements Transport {
     this.setStatus('disconnected');
   }
 
-  private async sendAction(message: PokerClientMessage): Promise<void> {
+  private async sendAction(message: PokerClientMessage): Promise<boolean> {
     const url = '/api/poker/action';
 
     try {
@@ -142,6 +180,11 @@ export class HttpPollingTransport implements Transport {
 
       if (!response.ok) {
         const errorText = await response.text();
+        if (response.status === 404) {
+          this.stopPolling();
+          clearBrowserSession(this.roomId);
+          this.setStatus('rejoin-required');
+        }
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
@@ -156,10 +199,13 @@ export class HttpPollingTransport implements Transport {
       if (result.clientId && typeof result.clientId === 'string') {
         this.clientId = result.clientId;
         this.saveClientId(result.clientId);
+        this.persistBrowserSession();
       }
+      return true;
     } catch (error) {
       console.error('[HttpPollingTransport] Failed to send action:', error);
       this.handlers.onError(error instanceof Error ? error.message : 'Failed to send action');
+      return false;
     }
   }
 
@@ -198,15 +244,17 @@ export class HttpPollingTransport implements Transport {
 
       if (!response.ok) {
         if (response.status === 404) {
-          // Client session expired, try to reconnect
-          console.warn('[HttpPollingTransport] Client session expired, reconnecting...');
-          if (this.lastJoin) {
-            this.setStatus('reconnecting');
-            void this.connect(this.lastJoin.roomId, this.lastJoin.name, this.lastJoin.token, this.lastJoin.fingerprint);
-          }
+          console.warn('[HttpPollingTransport] Client session expired; rejoin required');
+          this.stopPolling();
+          clearBrowserSession(this.roomId);
+          this.setStatus('rejoin-required');
           return;
         }
         throw new Error(`HTTP ${response.status}`);
+      }
+
+      if (this._status === 'unavailable') {
+        this.setStatus('connected');
       }
 
       const result = await response.json();
@@ -214,7 +262,10 @@ export class HttpPollingTransport implements Transport {
       if (result.events && Array.isArray(result.events)) {
         for (const event of result.events) {
           if (event.id > this.lastEventId) {
-            this.lastEventId = event.id;             this.saveLastEventId(this.lastEventId);          }
+            this.lastEventId = event.id;
+            this.saveLastEventId(this.lastEventId);
+            this.config.onEventCursor(this.lastEventId);
+          }
           if (event.message) {
             this.handlers.onMessage(event.message as PokerServerMessage);
           }
@@ -222,8 +273,9 @@ export class HttpPollingTransport implements Transport {
       }
     } catch (error) {
       console.error('[HttpPollingTransport] Polling error:', error);
-      // Don't report every polling error, just log it
-      // The next poll will retry
+      if (!this.manualDisconnect && this._status !== 'rejoin-required') {
+        this.setStatus('unavailable');
+      }
     }
   }
 }

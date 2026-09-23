@@ -43,4 +43,74 @@ describe('createInMemoryRoomPersistence', () => {
 
     expect(await persistence.get('room-1')).toBeNull();
   });
+
+  it('should preserve optional owner and session recovery fields', async () => {
+    let timestamp = 1_000;
+    const persistence = createInMemoryRoomPersistence({ now: () => timestamp });
+    const state: PersistedRoomState = {
+      token: 't',
+      rounds: [],
+      ownerReservation: {
+        clientId: 'client-1',
+        fingerprint: 'fingerprint-1',
+        expiresAt: 2_000,
+      },
+      sessions: [
+        {
+          clientId: 'client-1',
+          name: 'Alice',
+          fingerprint: 'fingerprint-1',
+          lastSeenAt: 1_500,
+          expiresAt: 2_500,
+        },
+      ],
+    };
+
+    await persistence.set('room-1', state);
+
+    await expect(persistence.get('room-1')).resolves.toEqual(state);
+  });
+
+  it('should clean expired owner and session recovery fields without expiring the room', async () => {
+    let timestamp = 1_000;
+    const persistence = createInMemoryRoomPersistence({ now: () => timestamp });
+    await persistence.set('room-1', {
+      token: 't',
+      rounds: [],
+      ownerReservation: {
+        clientId: 'expired-owner',
+        fingerprint: 'fingerprint-1',
+        expiresAt: 1_100,
+      },
+      sessions: [
+        {
+          clientId: 'expired-session',
+          name: 'Expired',
+          lastSeenAt: 1_000,
+          expiresAt: 1_100,
+        },
+        {
+          clientId: 'active-session',
+          name: 'Active',
+          lastSeenAt: 1_000,
+          expiresAt: 2_000,
+        },
+      ],
+    });
+
+    timestamp = 1_101;
+
+    await expect(persistence.get('room-1')).resolves.toEqual({
+      token: 't',
+      rounds: [],
+      sessions: [
+        {
+          clientId: 'active-session',
+          name: 'Active',
+          lastSeenAt: 1_000,
+          expiresAt: 2_000,
+        },
+      ],
+    });
+  });
 });

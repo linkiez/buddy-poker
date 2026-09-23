@@ -3,6 +3,7 @@ import { PLATFORM_ID } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { WebRtcTransport } from './webrtc-transport';
 import { PokerWsService } from './poker-ws.service';
 
 type Listener = (event: any) => void;
@@ -85,6 +86,19 @@ describe('PokerWsService', () => {
     service.connect('r', 'n');
 
     expect(MockWebSocket.instances.length).toBe(0);
+  });
+
+  it('should not create a network transport when another tab is leader', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    (service as any).startCrossTabCoordination = vi.fn();
+    (service as any).coordinator = { isLeader: () => false };
+    await service.connect('room-1', 'Dev Ninja');
+
+    expect(MockWebSocket.instances).toHaveLength(0);
   });
 
   it('should connect and send join on open', async () => {
@@ -275,9 +289,58 @@ describe('PokerWsService', () => {
     service.reset();
 
     expect(ws.sent.length).toBe(4);
-    expect(JSON.parse(ws.sent[1])).toEqual({ type: 'vote', roomId: 'room-1', value: '5' });
-    expect(JSON.parse(ws.sent[2])).toEqual({ type: 'reveal', roomId: 'room-1' });
-    expect(JSON.parse(ws.sent[3])).toEqual({ type: 'reset', roomId: 'room-1' });
+    expect(JSON.parse(ws.sent[1])).toMatchObject({ type: 'vote', roomId: 'room-1', value: '5' });
+    expect(JSON.parse(ws.sent[1]).actionId).toEqual(expect.any(String));
+    expect(JSON.parse(ws.sent[2])).toMatchObject({ type: 'reveal', roomId: 'room-1' });
+    expect(JSON.parse(ws.sent[2]).actionId).toEqual(expect.any(String));
+    expect(JSON.parse(ws.sent[3])).toMatchObject({ type: 'reset', roomId: 'room-1' });
+    expect(JSON.parse(ws.sent[3]).actionId).toEqual(expect.any(String));
+  });
+
+  it('should select HTTP polling before realtime transports when session storage enables HTTP-only mode', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    sessionStorage.setItem('bp_httpOnly', 'true');
+    const originalFetch = globalThis.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ clientId: 'http-client', message: { type: 'joined', clientId: 'http-client', roomId: 'room-1' } }),
+    });
+    globalThis.fetch = mockFetch;
+
+    try {
+      const service = TestBed.inject(PokerWsService);
+      await service.connect('room-1', 'Dev Ninja');
+      expect(MockWebSocket.instances).toHaveLength(0);
+      expect((service as any).currentMode).toBe('http-polling');
+      expect(mockFetch).toHaveBeenCalledWith(
+        '/api/poker/action',
+        expect.objectContaining({ method: 'POST' }),
+      );
+    } finally {
+      sessionStorage.removeItem('bp_httpOnly');
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('should deliver coordinator callbacks to the service', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    const coordinator = (service as any).coordinator;
+    const state = { roomId: 'room-1', reveal: false, participants: [] };
+    const action = { type: 'reset', roomId: 'room-1', actionId: 'action-callback' };
+
+    (coordinator as any).onState(state);
+    (coordinator as any).onStatus('connected');
+    (coordinator as any).onAction(action);
+
+    expect((service as any).stateSubject.value).toMatchObject(state);
+    expect((service as any).statusSubject.value).toBe('connected');
   });
 
   it('should handle incoming messages (joined, error, state) and ignore invalid payloads', async () => {
@@ -1384,7 +1447,7 @@ describe('PokerWsService', () => {
     });
 
     const service = TestBed.inject(PokerWsService);
-    (service as any).switchToWebRtc();
+    TestBed.runInInjectionContext(() => (service as any).switchToWebRtc());
 
     expect((service as any).transport).toBe(null);
     expect((service as any).currentMode).toBe(null);
@@ -1467,7 +1530,7 @@ describe('PokerWsService', () => {
         }
       };
 
-      (service as any).switchToWebRtc();
+      TestBed.runInInjectionContext(() => (service as any).switchToWebRtc());
     });
 
     // Verify console log was called
@@ -1552,5 +1615,153 @@ describe('PokerWsService', () => {
 
     // But setHandlers should have been called
     expect(mockWebRtcTransport.setHandlers).toHaveBeenCalled();
+  });
+
+  it('should forward follower actions to the elected leader', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const publishAction = vi.fn();
+    (service as any).coordinator = {
+      isLeader: () => false,
+      publishAction,
+    };
+
+    (service as any).sendAction({
+      type: 'vote',
+      roomId: 'room-1',
+      value: '5',
+      actionId: 'action-1',
+    });
+
+    expect(publishAction).toHaveBeenCalledWith({
+      type: 'vote',
+      roomId: 'room-1',
+      value: '5',
+      actionId: 'action-1',
+    });
+  });
+
+  it('should send leader actions through the active transport', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const send = vi.fn();
+    (service as any).coordinator = { isLeader: () => true };
+    (service as any).transport = { send };
+
+    (service as any).sendAction({
+      type: 'reset',
+      roomId: 'room-1',
+      actionId: 'action-2',
+    });
+
+    expect(send).toHaveBeenCalledWith({
+      type: 'reset',
+      roomId: 'room-1',
+      actionId: 'action-2',
+    });
+  });
+
+  it('should demote and disconnect the transport when leadership is lost', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const disconnect = vi.fn();
+    (service as any).transport = { disconnect };
+    (service as any).handleRoleChange(false);
+
+    expect(disconnect).toHaveBeenCalled();
+    expect((service as any).transport).toBe(null);
+    expect((service as any).currentMode).toBe(null);
+  });
+
+  it('should create and connect a transport when leadership is gained', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    (service as any).lastJoin = { roomId: 'room-1', name: 'Dev Ninja' };
+    (service as any).handleRoleChange(true);
+
+    expect(MockWebSocket.instances).toHaveLength(1);
+    expect((service as any).transport).toBeTruthy();
+  });
+
+  it('should ignore an incomplete transport reconnection request', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    expect(() => (service as any).connectCurrentTransport(null)).not.toThrow();
+  });
+
+  it('should replace an existing transport when switching to WebRTC', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const disconnect = vi.fn();
+    (service as any).transport = { disconnect };
+    TestBed.runInInjectionContext(() => (service as any).switchToWebRtc());
+
+    expect(disconnect).toHaveBeenCalled();
+    expect((service as any).currentMode).toBe('webrtc');
+  });
+
+  it('should invoke the shared cursor callback for HTTP polling', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const setCursor = vi.fn();
+    (service as any).coordinator = { getCursor: () => 0, setCursor };
+    (service as any).switchToHttpPolling();
+    const config = (service as any).transport.config;
+
+    config.onEventCursor(7);
+
+    expect(setCursor).toHaveBeenCalledWith(7);
+  });
+
+  it('should forward follower actions received by the leader', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const send = vi.fn();
+    (service as any).coordinator = { isLeader: () => true };
+    (service as any).transport = { send };
+
+    const action = { type: 'reveal', roomId: 'room-1', actionId: 'action-3' };
+    (service as any).handleFollowerAction(action);
+
+    expect(send).toHaveBeenCalledWith(action);
+  });
+
+  it('should ignore follower actions when the tab is not leader', () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    const send = vi.fn();
+    (service as any).coordinator = { isLeader: () => false };
+    (service as any).transport = { send };
+
+    (service as any).handleFollowerAction({ type: 'reset', roomId: 'room-1', actionId: 'action-4' });
+
+    expect(send).not.toHaveBeenCalled();
   });
 });

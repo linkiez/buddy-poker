@@ -12,7 +12,9 @@ import { MessageModule } from 'primeng/message';
 import { TagModule } from 'primeng/tag';
 
 import type { PokerRoomViewState } from '../poker/poker-types';
+import { getBrowserSession, migrateLegacyBrowserSession } from '../poker/browser-session';
 import { PokerWsService } from '../poker/poker-ws.service';
+import type { TransportMode, TransportStatus } from '../poker/transport.types';
 
 @Component({
   selector: 'app-room',
@@ -84,10 +86,8 @@ export class RoomComponent implements OnInit, OnDestroy {
   protected copyMessage = signal<string | null>(null);
   protected selectedVote = signal<string | null>(null);
   protected votePickTick = signal(0);
-  protected connectionStatus = signal<'disconnected' | 'connecting' | 'connected' | 'reconnecting'>(
-    'disconnected',
-  );
-  protected transportMode = signal<'webrtc' | 'websocket' | 'http-polling' | null>(null);
+  protected connectionStatus = signal<TransportStatus>('disconnected');
+  protected transportMode = signal<TransportMode | null>(null);
 
   protected isOwner = computed(() => {
     const state = this.state();
@@ -115,6 +115,10 @@ export class RoomComponent implements OnInit, OnDestroy {
         return 'conectando…';
       case 'reconnecting':
         return 'reconectando…';
+      case 'rejoin-required':
+        return 'entre novamente';
+      case 'unavailable':
+        return 'indisponível';
       default:
         return 'desconectado';
     }
@@ -144,6 +148,22 @@ export class RoomComponent implements OnInit, OnDestroy {
     }
   });
 
+  protected moderatorGuidance = computed(() => {
+    if (this.connectionStatus() === 'rejoin-required') {
+      return 'Sua sessão expirou. Entre novamente para solicitar uma nova identidade ao servidor.';
+    }
+
+    if (this.connectionStatus() === 'unavailable') {
+      return 'A sessão não está disponível. Verifique a conexão e entre novamente.';
+    }
+
+    if (this.connectionStatus() === 'reconnecting' || this.connectionStatus() === 'connecting') {
+      return 'Validando sua sessão e as permissões da sala…';
+    }
+
+    return 'Modo participante: o servidor precisa confirmar a sessão do moderador para liberar revelar/resetar.';
+  });
+
   protected transportModeSeverity = computed<'success' | 'secondary' | 'warn'>(() => {
     const mode = this.transportMode();
     if (mode === 'webrtc') {
@@ -170,9 +190,11 @@ export class RoomComponent implements OnInit, OnDestroy {
     const queryToken = this.route.snapshot.queryParamMap.get('token');
     this.roomToken.set(queryToken?.trim() || null);
 
-    const browserName = isPlatformBrowser(this.platformId)
-      ? sessionStorage.getItem('bp_name')
+    const browserSession = isPlatformBrowser(this.platformId)
+      ? getBrowserSession(this.roomId, localStorage, sessionStorage) ??
+        migrateLegacyBrowserSession(this.roomId, localStorage, sessionStorage)
       : null;
+    const browserName = browserSession?.name ?? null;
 
     this.name = queryName || browserName || '';
 

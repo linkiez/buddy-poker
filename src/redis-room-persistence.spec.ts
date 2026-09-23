@@ -5,6 +5,7 @@ import {
     createRedisRoomPersistenceFromClient,
     type RedisClientLike,
 } from './redis-room-persistence';
+import type { PersistedRoomState } from './room-persistence';
 
 const redisMocks = vi.hoisted(() => {
   const client = {
@@ -53,6 +54,125 @@ describe('createRedisRoomPersistenceFromClient', () => {
 
     expect(await persistence.get('abc')).toEqual({ token: 't', rounds: [] });
     expect(setCalls[0]?.key).toBe('buddy:room:abc');
+  });
+
+  it('should serialize and deserialize owner and session recovery fields', async () => {
+    let stored = '';
+    const client: RedisClientLike = {
+      async get() {
+        return stored || null;
+      },
+      async set(_key: string, value: string) {
+        stored = value;
+        return 'OK';
+      },
+      async del() {
+        return 1;
+      },
+    };
+    const persistence = createRedisRoomPersistenceFromClient({
+      client,
+      keyPrefix: 'buddy:room:',
+      defaultTtlSeconds: 60,
+    });
+    const state: PersistedRoomState = {
+      token: 't',
+      rounds: [],
+      ownerReservation: {
+        clientId: 'client-1',
+        fingerprint: 'fingerprint-1',
+        expiresAt: Date.now() + 10_000,
+      },
+      sessions: [
+        {
+          clientId: 'client-1',
+          name: 'Alice',
+          fingerprint: 'fingerprint-1',
+          lastSeenAt: Date.now(),
+          expiresAt: Date.now() + 10_000,
+        },
+      ],
+    };
+
+    await persistence.set('abc', state);
+
+    await expect(persistence.get('abc')).resolves.toEqual(state);
+  });
+
+  it('should omit expired recovery fields when reading redis state', async () => {
+    const client: RedisClientLike = {
+      async get() {
+        return JSON.stringify({
+          token: 't',
+          rounds: [],
+          ownerReservation: {
+            clientId: 'expired-owner',
+            fingerprint: 'fingerprint-1',
+            expiresAt: 100,
+          },
+          sessions: [
+            {
+              clientId: 'active-session',
+              name: 'Active',
+              lastSeenAt: 50,
+              expiresAt: 200,
+            },
+          ],
+        });
+      },
+      async set() {
+        return 'OK';
+      },
+      async del() {
+        return 1;
+      },
+    };
+    const persistence = createRedisRoomPersistenceFromClient({
+      client,
+      keyPrefix: 'buddy:room:',
+      defaultTtlSeconds: 60,
+      now: () => 150,
+    });
+
+    await expect(persistence.get('abc')).resolves.toEqual({
+      token: 't',
+      rounds: [],
+      sessions: [
+        {
+          clientId: 'active-session',
+          name: 'Active',
+          lastSeenAt: 50,
+          expiresAt: 200,
+        },
+      ],
+    });
+  });
+
+  it('should ignore malformed recovery records while preserving the room state', async () => {
+    const client: RedisClientLike = {
+      async get() {
+        return JSON.stringify({
+          token: 't',
+          rounds: [],
+          ownerReservation: { clientId: 42, fingerprint: null, expiresAt: 'later' },
+          sessions: [{ clientId: 'invalid', expiresAt: 'later' }],
+        });
+      },
+      async set() {
+        return 'OK';
+      },
+      async del() {
+        return 1;
+      },
+    };
+    const persistence = createRedisRoomPersistenceFromClient({
+      client,
+      keyPrefix: 'buddy:room:',
+      defaultTtlSeconds: 60,
+      now: () => 150,
+    });
+
+    await expect(persistence.get('abc')).resolves.toEqual({ token: 't', rounds: [] });
   });
 
   it('should set default ttl when ttl is not provided', async () => {

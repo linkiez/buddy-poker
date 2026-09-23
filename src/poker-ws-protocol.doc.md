@@ -15,8 +15,8 @@ O objetivo é centralizar:
 - Aplicar validação mínima coerente com o servidor:
   - `join` exige `roomId` e `name` como `string`.
   - `join` aceita `token`, `fingerprint` e `clientId` opcionais como `string`.
-  - `vote` exige `value` como `string`.
-  - `reveal` e `reset` não exigem campos adicionais.
+  - `vote` exige `value` como `string` e aceita `actionId` opcional.
+  - `reveal` e `reset` aceitam `actionId` opcional.
 
 ## Entradas e saídas
 
@@ -50,6 +50,11 @@ flowchart TD
 - JSON válido, porém não-objeto (ex.: `null`, `[]`, `123`) retorna `null`.
 - Campos extras são ignorados.
 - `token`, `fingerprint` e `clientId` em `join` só são aceitos quando são `string`.
+- `actionId` é aceito quando é uma string não vazia de até 128 caracteres.
+
+`actionId` é compartilhado pelo transporte HTTP e WebSocket. O servidor mantém uma janela
+limitada por participante; repetir uma ação já aceita retorna sucesso sem aplicar novamente a
+mutação. Clientes antigos sem `actionId` continuam compatíveis.
 
 ## Exemplos
 

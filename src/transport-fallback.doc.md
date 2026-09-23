@@ -4,6 +4,12 @@
 
 Implementação de fallback automático de WebSocket para HTTP polling, garantindo que o app continue funcionando mesmo quando WebSocket não está disponível (proxy, firewall, restrições de navegador).
 
+## Preferência de transporte
+
+Quando `sessionStorage['bp_httpOnly']` é igual a `true`, o serviço seleciona HTTP polling
+antes de qualquer tentativa WebSocket ou WebRTC. Nesse modo não há retry para transporte
+melhor. Valores ausentes, inválidos ou diferentes de `true` preservam o fluxo automático.
+
 ## Arquitetura
 
 ### Abstração de Transporte
@@ -66,13 +72,16 @@ Implementação de transporte via HTTP polling:
 - **POST `/api/poker/action`**: Envia ações (join, vote, reveal, reset)
 - **GET `/api/poker/events`**: Recebe eventos (polling a cada 1.5s, configurável)
 - **Sequenciamento**: Usa `lastEventId` para evitar duplicatas
-- **Sessão**: Mantém `clientId` entre requests
+- **Sessão**: Mantém um envelope versionado em `localStorage` com `clientId`, nome e cursor
+- **Ações**: Voto, reveal e reset carregam `actionId` para retries seguros
 
 Características:
 - Polling intervalado para receber eventos
 - Fila de eventos no servidor (últimos 100 por cliente)
 - Session management com TTL de 5 minutos
 - Reconexão automática em caso de session expiry
+- `404` de sessão encerra o polling e expõe `rejoin-required`; não cria uma identidade nova
+  silenciosamente
 
 ### 4. PokerWsService (refatorado)
 

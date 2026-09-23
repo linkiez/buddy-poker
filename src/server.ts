@@ -11,6 +11,8 @@ import { WebSocketServer, type WebSocket } from 'ws';
 
 import { assertModeratorAction } from './poker-permissions';
 import { parsePokerWsMessageFromClient } from './poker-ws-protocol';
+import { createHttpRateLimiter } from './http-rate-limit';
+import { RoomActionIdempotency } from './room-action-idempotency';
 import { createRateLimiter } from './rate-limit';
 import { createLazyRedisClientRoomPersistence } from './redis-room-persistence';
 import { createInMemoryRoomPersistence, type RoomPersistence } from './room-persistence';
@@ -25,8 +27,8 @@ import {
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
-const app = express();
-const angularApp = new AngularNodeAppEngine();
+export const app = express();
+let angularApp: AngularNodeAppEngine | null = null;
 
 // Disable fingerprint validation in E2E tests
 const DISABLE_FINGERPRINT_VALIDATION = process.env['DISABLE_FINGERPRINT_VALIDATION'] === 'true';
@@ -36,6 +38,8 @@ type PokerParticipantState = {
   name: string;
   vote: string | null;
   fingerprint: string | null;
+  lastSeenAt?: number;
+  expiresAt?: number;
 };
 
 type PokerRoomState = {
@@ -48,6 +52,7 @@ type PokerRoomState = {
   participants: Map<string, PokerParticipantState>;
   sockets: Map<string, WebSocket>;
   webrtcPeers: Map<string, WebSocket>; // clientId -> WebSocket for WebRTC signaling
+  actionIds: Map<string, RoomActionIdempotency>;
 };
 
 type PokerConnectionState = {
@@ -57,6 +62,7 @@ type PokerConnectionState = {
 
 const rooms = new Map<string, PokerRoomState>();
 const socketAlive = new WeakMap<WebSocket, boolean>();
+const participantSessionTtlMs = 5 * 60 * 1000;
 
 const roomTtlSeconds = (() => {
   const raw = process.env['ROOM_TTL_SECONDS'];
@@ -127,25 +133,68 @@ async function getOrCreateRoom(roomIdRaw: string): Promise<PokerRoomState> {
 
   const token = persisted?.token ?? `${generateId()}${generateId()}`;
   const rounds = persisted?.rounds ?? [];
+  const ownerReservation = persisted?.ownerReservation
+    ? { ...persisted.ownerReservation }
+    : null;
 
   const room: PokerRoomState = {
     roomId,
-    ownerId: null,
-    ownerReservation: null,
+    ownerId: ownerReservation?.clientId ?? null,
+    ownerReservation,
     token,
     reveal: false,
     rounds,
     participants: new Map(),
     sockets: new Map(),
     webrtcPeers: new Map(),
+    actionIds: new Map(),
   };
+  const now = Date.now();
+  for (const session of persisted?.sessions ?? []) {
+    if (session.expiresAt <= now) {
+      continue;
+    }
+    room.participants.set(session.clientId, {
+      id: session.clientId,
+      name: session.name,
+      vote: session.vote ?? null,
+      fingerprint: session.fingerprint ?? null,
+      lastSeenAt: session.lastSeenAt,
+      expiresAt: session.expiresAt,
+    });
+  }
   rooms.set(roomId, room);
 
-  void roomPersistence
-    .set(roomId, { token: room.token, rounds: room.rounds }, { ttlSeconds: roomTtlSeconds })
-    .catch(() => undefined);
+  persistRoom(room);
 
   return room;
+}
+
+function isValidActionId(actionId: unknown): actionId is string {
+  return typeof actionId === 'string' && actionId.trim().length > 0 && actionId.length <= 128;
+}
+
+function isDuplicateAction(
+  room: PokerRoomState,
+  clientId: string,
+  actionId: string | undefined,
+): boolean {
+  if (!actionId) {
+    return false;
+  }
+
+  let actions = room.actionIds.get(clientId);
+  if (!actions) {
+    actions = new RoomActionIdempotency({ capacity: 100, ttlMs: 5 * 60 * 1000 });
+    room.actionIds.set(clientId, actions);
+  }
+
+  if (actions.has(actionId)) {
+    return true;
+  }
+
+  actions.remember(actionId);
+  return false;
 }
 
 function sendError(socket: WebSocket, message: string): void {
@@ -157,7 +206,41 @@ function sendError(socket: WebSocket, message: string): void {
 }
 
 function syncOwnerReservation(room: PokerRoomState, now = Date.now()): void {
-  releaseExpiredOwnerReservation(room, now);
+  if (releaseExpiredOwnerReservation(room, now)) {
+    persistRoom(room);
+  }
+}
+
+function persistRoom(room: PokerRoomState): void {
+  const now = Date.now();
+  const sessions = Array.from(room.participants.values())
+    .filter((participant) => (participant.expiresAt ?? 0) > now)
+    .map((participant) => ({
+      clientId: participant.id,
+      name: participant.name,
+      fingerprint: participant.fingerprint,
+      vote: participant.vote,
+      lastSeenAt: participant.lastSeenAt ?? now,
+      expiresAt: participant.expiresAt ?? now + participantSessionTtlMs,
+    }));
+
+  void roomPersistence
+    .set(
+      room.roomId,
+      {
+        token: room.token,
+        rounds: room.rounds,
+        ...(room.ownerReservation ? { ownerReservation: room.ownerReservation } : {}),
+        ...(sessions.length > 0 ? { sessions } : {}),
+      },
+      { ttlSeconds: roomTtlSeconds },
+    )
+    .catch(() => undefined);
+}
+
+function touchParticipant(participant: PokerParticipantState, now = Date.now()): void {
+  participant.lastSeenAt = now;
+  participant.expiresAt = now + participantSessionTtlMs;
 }
 
 function broadcastRoomState(room: PokerRoomState): void {
@@ -205,6 +288,7 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
     return;
   }
 
+  persistRoom(room);
   broadcastRoomState(room);
   broadcastRoomStateHttp(room);
 }
@@ -248,7 +332,10 @@ async function handleJoinMessage(
     !!room.ownerReservation &&
     room.ownerReservation.fingerprint === msg.fingerprint;
   const reservedOwnerMatchesClientId =
+    !DISABLE_FINGERPRINT_VALIDATION &&
+    !!msg.fingerprint &&
     !!room.ownerReservation &&
+    room.ownerReservation.fingerprint === msg.fingerprint &&
     !!msg.clientId &&
     room.ownerReservation.clientId === msg.clientId;
   const requestedClientIdCanRejoin =
@@ -375,10 +462,22 @@ async function handleJoinMessage(
 
   state.clientId = clientId;
   state.currentRoom = room;
+  const joinedParticipant = room.participants.get(clientId);
+  if (joinedParticipant) {
+    touchParticipant(joinedParticipant);
+    room.participants.set(clientId, joinedParticipant);
+  }
 
   room.sockets.set(clientId, socket);
 
-  if (!restoreReservedOwner(room, clientId) && !room.ownerId) {
+  if (
+    !restoreReservedOwner(room, {
+      clientId,
+      fingerprint: msg.fingerprint ?? null,
+      now: Date.now(),
+    }) &&
+    !room.ownerId
+  ) {
     room.ownerId = clientId;
   }
 
@@ -391,9 +490,7 @@ async function handleJoinMessage(
     }),
   );
 
-  void roomPersistence
-    .set(room.roomId, { token: room.token, rounds: room.rounds }, { ttlSeconds: roomTtlSeconds })
-    .catch(() => undefined);
+  persistRoom(room);
 
   broadcastRoomState(room);
   broadcastRoomStateHttp(room);
@@ -401,7 +498,7 @@ async function handleJoinMessage(
 
 function handleVoteMessage(
   state: PokerConnectionState,
-  msg: { value: string },
+  msg: { value: string; actionId?: string },
 ): void {
   if (!state.currentRoom || !state.clientId) {
     return;
@@ -416,22 +513,32 @@ function handleVoteMessage(
     return;
   }
 
+  if (isDuplicateAction(state.currentRoom, state.clientId, msg.actionId)) {
+    return;
+  }
+
   participant.vote = msg.value.slice(0, 8);
   state.currentRoom.participants.set(state.clientId, participant);
   broadcastRoomState(state.currentRoom);
   broadcastRoomStateHttp(state.currentRoom);
 }
 
-function handleRevealMessage(state: PokerConnectionState, socket: WebSocket): void {
+function handleRevealMessage(state: PokerConnectionState, socket: WebSocket, actionId?: string): void {
   if (!state.currentRoom || !state.clientId) {
     return;
   }
 
   syncOwnerReservation(state.currentRoom);
+  const participant = state.currentRoom.participants.get(state.clientId);
+  if (!participant) {
+    return;
+  }
 
   const guard = assertModeratorAction({
     ownerId: state.currentRoom.ownerId,
     clientId: state.clientId,
+    ownerFingerprint: participant.fingerprint,
+    clientFingerprint: participant.fingerprint,
     action: 'reveal',
   });
 
@@ -440,26 +547,40 @@ function handleRevealMessage(state: PokerConnectionState, socket: WebSocket): vo
     return;
   }
 
+  if (isDuplicateAction(state.currentRoom, state.clientId, actionId)) {
+    return;
+  }
+
   state.currentRoom.reveal = true;
   broadcastRoomState(state.currentRoom);
   broadcastRoomStateHttp(state.currentRoom);
 }
 
-function handleResetMessage(state: PokerConnectionState, socket: WebSocket): void {
+function handleResetMessage(state: PokerConnectionState, socket: WebSocket, actionId?: string): void {
   if (!state.currentRoom || !state.clientId) {
     return;
   }
 
   syncOwnerReservation(state.currentRoom);
+  const participant = state.currentRoom.participants.get(state.clientId);
+  if (!participant) {
+    return;
+  }
 
   const guard = assertModeratorAction({
     ownerId: state.currentRoom.ownerId,
     clientId: state.clientId,
+    ownerFingerprint: participant.fingerprint,
+    clientFingerprint: participant.fingerprint,
     action: 'reset',
   });
 
   if (!guard.ok) {
     sendError(socket, guard.message);
+    return;
+  }
+
+  if (isDuplicateAction(state.currentRoom, state.clientId, actionId)) {
     return;
   }
 
@@ -470,13 +591,7 @@ function handleResetMessage(state: PokerConnectionState, socket: WebSocket): voi
     maxRounds: 20,
   });
 
-  void roomPersistence
-    .set(
-      state.currentRoom.roomId,
-      { token: state.currentRoom.token, rounds: state.currentRoom.rounds },
-      { ttlSeconds: roomTtlSeconds },
-    )
-    .catch(() => undefined);
+  persistRoom(state.currentRoom);
 
   state.currentRoom.reveal = false;
   for (const p of state.currentRoom.participants.values()) {
@@ -730,7 +845,7 @@ function broadcastRoomStateHttp(room: PokerRoomState): void {
 // Clean up old HTTP sessions periodically
 const httpSessionTtlMs = 5 * 60 * 1000; // 5 minutes
 const httpCleanupIntervalMs = 60_000; // 1 minute
-setInterval(() => {
+const httpCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [clientId, session] of httpSessions.entries()) {
     if (now - session.createdAt > httpSessionTtlMs) {
@@ -741,15 +856,42 @@ setInterval(() => {
 
   for (const [roomId, room] of rooms.entries()) {
     syncOwnerReservation(room, now);
+    for (const [clientId, participant] of room.participants.entries()) {
+      if ((participant.expiresAt ?? now) <= now && !room.sockets.has(clientId) && !httpSessions.has(clientId)) {
+        room.participants.delete(clientId);
+      }
+    }
     if (room.participants.size === 0 && !room.ownerReservation) {
       rooms.delete(roomId);
       void roomPersistence.delete(roomId).catch(() => undefined);
+    } else {
+      persistRoom(room);
     }
   }
 }, httpCleanupIntervalMs);
+httpCleanupTimer.unref?.();
 
 // Middleware to parse JSON
 app.use(express.json());
+
+function getPositiveEnvNumber(name: string, fallback: number): number {
+  const value = Number.parseInt(process.env[name] ?? '', 10);
+  return Number.isSafeInteger(value) && value > 0 ? value : fallback;
+}
+
+const httpActionRateLimiter = createHttpRateLimiter({
+  maxEvents: getPositiveEnvNumber('HTTP_ACTION_RATE_LIMIT', 120),
+  windowMs: 60_000,
+});
+const httpEventsRateLimiter = createHttpRateLimiter({
+  maxEvents: getPositiveEnvNumber('HTTP_EVENTS_RATE_LIMIT', 240),
+  windowMs: 60_000,
+});
+
+function rejectRateLimitedRequest(res: express.Response): void {
+  res.setHeader('Retry-After', '60');
+  res.status(429).json({ error: 'Muitas solicitações. Aguarde alguns segundos.' });
+}
 
 /**
  * WebRTC Configuration endpoint
@@ -786,6 +928,11 @@ app.get('/api/webrtc-config', (req, res) => {
  * HTTP Fallback - Action endpoint
  */
 app.post('/api/poker/action', async (req, res) => {
+  if (!httpActionRateLimiter.allow(req)) {
+    rejectRateLimitedRequest(res);
+    return;
+  }
+
   try {
     const msg = req.body;
     const existingClientId = req.headers['x-client-id'] as string | undefined;
@@ -804,15 +951,17 @@ app.post('/api/poker/action', async (req, res) => {
       const fingerprint = typeof msg.fingerprint === 'string' ? msg.fingerprint : undefined;
 
       let existingParticipantWithFingerprint: PokerParticipantState | null = null;
+      let sameIdentityRejoin = false;
       if (!DISABLE_FINGERPRINT_VALIDATION && fingerprint) {
         existingParticipantWithFingerprint = Array.from(room.participants.values()).find(
           (p) => p.fingerprint === fingerprint && p.id !== requestedClientId,
         ) ?? null;
 
         if (existingParticipantWithFingerprint) {
+          sameIdentityRejoin = existingParticipantWithFingerprint.name === name;
           const hasActiveSocket = room.sockets.has(existingParticipantWithFingerprint.id);
           const hasActiveHttpSession = httpSessions.has(existingParticipantWithFingerprint.id);
-          if (hasActiveSocket || hasActiveHttpSession) {
+          if ((hasActiveSocket || hasActiveHttpSession) && !sameIdentityRejoin) {
             res.status(403).json({ error: 'Você já está participando desta sala com outra identidade.' });
             return;
           }
@@ -825,7 +974,10 @@ app.post('/api/poker/action', async (req, res) => {
         !!room.ownerReservation &&
         room.ownerReservation.fingerprint === fingerprint;
       const reservedOwnerMatchesClientId =
+        !DISABLE_FINGERPRINT_VALIDATION &&
+        !!fingerprint &&
         !!room.ownerReservation &&
+        room.ownerReservation.fingerprint === fingerprint &&
         !!requestedClientId &&
         room.ownerReservation.clientId === requestedClientId;
       const requestedClientIdCanRejoin =
@@ -848,8 +1000,9 @@ app.post('/api/poker/action', async (req, res) => {
           reservedOwnerMatchesClientId ||
           (
             !!existingParticipantWithFingerprint &&
-            !room.sockets.has(existingParticipantWithFingerprint.id) &&
-            !httpSessions.has(existingParticipantWithFingerprint.id)
+            (sameIdentityRejoin ||
+              (!room.sockets.has(existingParticipantWithFingerprint.id) &&
+                !httpSessions.has(existingParticipantWithFingerprint.id)))
           ) ||
           requestedClientIdCanRejoin,
       });
@@ -866,6 +1019,15 @@ app.post('/api/poker/action', async (req, res) => {
           id: clientId,
           name,
           vote: null,
+          fingerprint: fingerprint ?? null,
+        });
+      } else if (sameIdentityRejoin && existingParticipantWithFingerprint) {
+        clientId = existingParticipantWithFingerprint.id;
+        httpSessions.delete(clientId);
+        eventQueue.delete(clientId);
+        room.participants.set(clientId, {
+          ...existingParticipantWithFingerprint,
+          name,
           fingerprint: fingerprint ?? null,
         });
       } else if (
@@ -921,8 +1083,21 @@ app.post('/api/poker/action', async (req, res) => {
         room.participants.set(clientId, { id: clientId, name, vote: null, fingerprint: fingerprint ?? null });
       }
 
-      if (!restoreReservedOwner(room, clientId) && !room.ownerId) {
+      if (
+        !restoreReservedOwner(room, {
+          clientId,
+          fingerprint: fingerprint ?? null,
+          now: Date.now(),
+        }) &&
+        !room.ownerId
+      ) {
         room.ownerId = clientId;
+      }
+
+      const joinedParticipant = room.participants.get(clientId);
+      if (joinedParticipant) {
+        touchParticipant(joinedParticipant);
+        room.participants.set(clientId, joinedParticipant);
       }
 
       const session = createHttpSession(clientId, room.roomId, name, room);
@@ -949,9 +1124,7 @@ app.post('/api/poker/action', async (req, res) => {
 
       res.json(response);
 
-      void roomPersistence
-        .set(room.roomId, { token: room.token, rounds: room.rounds }, { ttlSeconds: roomTtlSeconds })
-        .catch(() => undefined);
+      persistRoom(room);
 
       broadcastRoomState(room);
       broadcastRoomStateHttp(room);
@@ -976,8 +1149,19 @@ app.post('/api/poker/action', async (req, res) => {
       res.status(404).json({ error: 'Participant not found' });
       return;
     }
+    touchParticipant(participant);
+
+    if (msg.actionId !== undefined && !isValidActionId(msg.actionId)) {
+      res.status(400).json({ error: 'Invalid actionId' });
+      return;
+    }
 
     if (msg.type === 'vote') {
+      if (isDuplicateAction(room, existingClientId, msg.actionId)) {
+        res.json({ message: null, duplicate: true });
+        return;
+      }
+
       if (room.reveal) {
         res.json({ message: null });
         return;
@@ -997,11 +1181,18 @@ app.post('/api/poker/action', async (req, res) => {
       const guard = assertModeratorAction({
         ownerId: room.ownerId,
         clientId: existingClientId,
+        ownerFingerprint: participant.fingerprint,
+        clientFingerprint: participant.fingerprint,
         action: 'reveal',
       });
 
       if (!guard.ok) {
         res.status(403).json({ error: guard.message });
+        return;
+      }
+
+      if (isDuplicateAction(room, existingClientId, msg.actionId)) {
+        res.json({ message: null, duplicate: true });
         return;
       }
 
@@ -1018,11 +1209,18 @@ app.post('/api/poker/action', async (req, res) => {
       const guard = assertModeratorAction({
         ownerId: room.ownerId,
         clientId: existingClientId,
+        ownerFingerprint: participant.fingerprint,
+        clientFingerprint: participant.fingerprint,
         action: 'reset',
       });
 
       if (!guard.ok) {
         res.status(403).json({ error: guard.message });
+        return;
+      }
+
+      if (isDuplicateAction(room, existingClientId, msg.actionId)) {
+        res.json({ message: null, duplicate: true });
         return;
       }
 
@@ -1033,13 +1231,7 @@ app.post('/api/poker/action', async (req, res) => {
         maxRounds: 20,
       });
 
-      void roomPersistence
-        .set(
-          room.roomId,
-          { token: room.token, rounds: room.rounds },
-          { ttlSeconds: roomTtlSeconds },
-        )
-        .catch(() => undefined);
+      persistRoom(room);
 
       room.reveal = false;
       for (const p of room.participants.values()) {
@@ -1062,6 +1254,11 @@ app.post('/api/poker/action', async (req, res) => {
  * HTTP Fallback - Events endpoint (polling)
  */
 app.get('/api/poker/events', (req, res) => {
+  if (!httpEventsRateLimiter.allow(req)) {
+    rejectRateLimitedRequest(res);
+    return;
+  }
+
   try {
     const clientId = req.query['clientId'] as string;
     const lastEventId = Number(req.query['lastEventId'] ?? 0);
@@ -1079,6 +1276,12 @@ app.get('/api/poker/events', (req, res) => {
 
     // Update session timestamp
     session.createdAt = Date.now();
+    const participant = session.room.participants.get(clientId);
+    if (participant) {
+      touchParticipant(participant);
+      session.room.participants.set(clientId, participant);
+      persistRoom(session.room);
+    }
 
     const queue = eventQueue.get(clientId) ?? [];
     const newEvents = queue.filter((event) => event.id > lastEventId);
@@ -1117,6 +1320,7 @@ app.use(
  * Handle all other requests by rendering the Angular application.
  */
 app.use((req, res, next) => {
+  angularApp ??= new AngularNodeAppEngine();
   angularApp
     .handle(req)
     .then((response) =>
@@ -1185,10 +1389,10 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
           handleVoteMessage(state, msg);
           return;
         case 'reveal':
-          handleRevealMessage(state, socket);
+          handleRevealMessage(state, socket, msg.actionId);
           return;
         case 'reset':
-          handleResetMessage(state, socket);
+          handleResetMessage(state, socket, msg.actionId);
           return;
         case 'webrtc-join':
           void handleWebRtcJoin(state, socket, msg);

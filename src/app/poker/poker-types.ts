@@ -1,3 +1,5 @@
+import type { ActionIdentifier, BrowserSessionEnvelope, RecoveryState, TransportPreference } from './transport.types';
+
 export type PokerParticipantView = {
   id: string;
   name: string;
@@ -24,11 +26,24 @@ export type PokerServerMessage =
   | { type: 'webrtc-ice-candidate'; fromPeerId: string; candidate: RTCIceCandidateInit };
 
 export type PokerClientMessage =
-  | { type: 'join'; roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string }
-  | { type: 'vote'; roomId: string; value: string }
-  | { type: 'reveal'; roomId: string }
-  | { type: 'reset'; roomId: string }
+  | {
+      type: 'join';
+      roomId: string;
+      name: string;
+      token?: string;
+      fingerprint?: string;
+      clientId?: string;
+    }
+  | { type: 'vote'; roomId: string; value: string; actionId?: ActionIdentifier }
+  | { type: 'reveal'; roomId: string; actionId?: ActionIdentifier }
+  | { type: 'reset'; roomId: string; actionId?: ActionIdentifier }
   | { type: 'webrtc-join'; roomId: string; token?: string }
   | { type: 'webrtc-offer'; roomId: string; targetPeerId: string; offer: RTCSessionDescriptionInit }
   | { type: 'webrtc-answer'; roomId: string; targetPeerId: string; answer: RTCSessionDescriptionInit }
   | { type: 'webrtc-ice-candidate'; roomId: string; targetPeerId: string; candidate: RTCIceCandidateInit };
+
+export type PokerRecoveryState = {
+  state: RecoveryState;
+  session: BrowserSessionEnvelope | null;
+  transportPreference: TransportPreference;
+};

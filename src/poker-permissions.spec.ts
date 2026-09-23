@@ -30,4 +30,19 @@ describe('poker-permissions', () => {
       message: 'Apenas o moderador pode resetar a rodada.',
     });
   });
+
+  it('should reject an owner id when the authenticated fingerprint does not match', () => {
+    expect(
+      assertModeratorAction({
+        ownerId: 'a',
+        clientId: 'a',
+        ownerFingerprint: 'fingerprint-a',
+        clientFingerprint: 'fingerprint-b',
+        action: 'reveal',
+      }),
+    ).toEqual({
+      ok: false,
+      message: 'Apenas o moderador pode revelar os votos.',
+    });
+  });
 });

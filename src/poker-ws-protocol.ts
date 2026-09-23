@@ -1,8 +1,8 @@
 export type PokerWsMessageFromClient =
   | { type: 'join'; roomId: string; name: string; token?: string; fingerprint?: string; clientId?: string }
-  | { type: 'vote'; value: string }
-  | { type: 'reveal' }
-  | { type: 'reset' }
+  | { type: 'vote'; value: string; actionId?: string }
+  | { type: 'reveal'; actionId?: string }
+  | { type: 'reset'; actionId?: string }
   | { type: 'webrtc-join'; roomId: string; token?: string }
   | { type: 'webrtc-offer'; roomId: string; targetPeerId: string; offer: RTCSessionDescriptionInit }
   | { type: 'webrtc-answer'; roomId: string; targetPeerId: string; answer: RTCSessionDescriptionInit }
@@ -14,6 +14,12 @@ function safeJsonParse(input: string): unknown {
   } catch {
     return null;
   }
+}
+
+function readActionId(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 && value.length <= 128
+    ? value
+    : undefined;
 }
 
 export function parsePokerWsMessageFromClient(raw: string): PokerWsMessageFromClient | null {
@@ -53,14 +59,19 @@ export function parsePokerWsMessageFromClient(raw: string): PokerWsMessageFromCl
         return null;
       }
 
-      return { type: 'vote', value };
+      const actionId = readActionId(msg['actionId']);
+      return { type: 'vote', value, ...(actionId ? { actionId } : {}) };
     }
 
-    case 'reveal':
-      return { type: 'reveal' };
+    case 'reveal': {
+      const actionId = readActionId(msg['actionId']);
+      return { type: 'reveal', ...(actionId ? { actionId } : {}) };
+    }
 
-    case 'reset':
-      return { type: 'reset' };
+    case 'reset': {
+      const actionId = readActionId(msg['actionId']);
+      return { type: 'reset', ...(actionId ? { actionId } : {}) };
+    }
 
     case 'webrtc-join': {
       const roomId = msg['roomId'];

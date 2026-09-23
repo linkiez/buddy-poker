@@ -1,11 +1,49 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { createRateLimiter } from './rate-limit';
+import { createHttpRateLimiter } from './http-rate-limit';
 
 describe('createRateLimiter', () => {
   it('should throw for invalid maxEvents', () => {
     expect(() => createRateLimiter({ maxEvents: 0, windowMs: 1000 })).toThrow(TypeError);
     expect(() => createRateLimiter({ maxEvents: Number.NaN, windowMs: 1000 })).toThrow(TypeError);
+  });
+
+  describe('createHttpRateLimiter', () => {
+    it('limits clients independently', () => {
+      const limiter = createHttpRateLimiter({ maxEvents: 1, windowMs: 1_000 });
+      const first = { ip: 'first' } as never;
+      const second = { ip: 'second' } as never;
+
+      expect(limiter.allow(first)).toBe(true);
+      expect(limiter.allow(first)).toBe(false);
+      expect(limiter.allow(second)).toBe(true);
+    });
+
+    it('supports a custom client key', () => {
+      const limiter = createHttpRateLimiter({
+        maxEvents: 1,
+        windowMs: 1_000,
+        key: (request) => String(request.headers['x-client-key'] ?? 'fallback'),
+      });
+      const first = { headers: { 'x-client-key': 'same' } } as never;
+      const second = { headers: { 'x-client-key': 'same' } } as never;
+
+      expect(limiter.allow(first)).toBe(true);
+      expect(limiter.allow(second)).toBe(false);
+    });
+
+    it('uses an unknown key when the request has no client ip', () => {
+      const limiter = createHttpRateLimiter({
+        maxEvents: 1,
+        windowMs: 1_000,
+      });
+      const first = {} as never;
+      const second = {} as never;
+
+      expect(limiter.allow(first)).toBe(true);
+      expect(limiter.allow(second)).toBe(false);
+    });
   });
 
   it('should throw for invalid windowMs', () => {
