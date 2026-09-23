@@ -1,3 +1,10 @@
+# [1.8.0](https://github.com/linkiez/buddy-poker/compare/v1.7.1...v1.8.0) (2026-09-23)
+
+
+### Features
+
+* **#15:** validar nome de sala na URL ([2d475b5](https://github.com/linkiez/buddy-poker/commit/2d475b58851daea97462f4d192b5b9d1de7614dc)), closes [#15](https://github.com/linkiez/buddy-poker/issues/15)
+
 ## [1.7.1](https://github.com/linkiez/buddy-poker/compare/v1.7.0...v1.7.1) (2026-09-23)
 
 
