@@ -4,11 +4,16 @@ import { saveBrowserSession } from './browser-session';
 import { HttpPollingTransport } from './http-polling-transport';
 
 describe('HttpPollingTransport', () => {
+  let persistedRoomId: string | null = null;
+
   afterEach(() => {
     localStorage.removeItem('bp_session_room-1');
-    localStorage.removeItem('bp_session_persisted-room');
-    localStorage.removeItem('bp_clientId_persisted-room');
-    localStorage.removeItem('bp_lastEventId_persisted-room');
+    if (persistedRoomId) {
+      localStorage.removeItem(`bp_session_${persistedRoomId}`);
+      localStorage.removeItem(`bp_clientId_${persistedRoomId}`);
+      localStorage.removeItem(`bp_lastEventId_${persistedRoomId}`);
+      persistedRoomId = null;
+    }
     vi.restoreAllMocks();
   });
 
@@ -62,6 +67,7 @@ describe('HttpPollingTransport', () => {
   });
 
   it('reuses the persisted fingerprint when reconnecting a browser session', async () => {
+    persistedRoomId = `persisted-room-${Date.now()}`;
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -71,7 +77,7 @@ describe('HttpPollingTransport', () => {
     } as Response);
     saveBrowserSession({
       schemaVersion: 1,
-      roomId: 'persisted-room',
+      roomId: persistedRoomId,
       clientId: 'client-1',
       name: 'Alice',
       fingerprint: 'persisted-fingerprint',
@@ -84,7 +90,7 @@ describe('HttpPollingTransport', () => {
       onError: () => undefined,
     });
 
-    await transport.connect('persisted-room', 'Alice', undefined, 'new-runtime-fingerprint');
+    await transport.connect(persistedRoomId, 'Alice', undefined, 'new-runtime-fingerprint');
 
     const joinCall = fetchMock.mock.calls.find((call) => String(call[1]?.body).includes('"join"'));
     expect(JSON.parse(String(joinCall?.[1]?.body))).toMatchObject({
