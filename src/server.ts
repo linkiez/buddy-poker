@@ -989,6 +989,13 @@ app.post('/api/poker/action', async (req, res) => {
           DISABLE_FINGERPRINT_VALIDATION ||
           (!!fingerprint && room.participants.get(requestedClientId)?.fingerprint === fingerprint)
         );
+      const requestedClientIdMatchesFingerprint =
+        !!requestedClientId &&
+        room.participants.has(requestedClientId) &&
+        (
+          DISABLE_FINGERPRINT_VALIDATION ||
+          (!!fingerprint && room.participants.get(requestedClientId)?.fingerprint === fingerprint)
+        );
 
       const isFirstJoin = room.participants.size === 0 && room.ownerId === null;
       const tokenAllowed = isTokenAllowed({
@@ -1004,7 +1011,8 @@ app.post('/api/poker/action', async (req, res) => {
               (!room.sockets.has(existingParticipantWithFingerprint.id) &&
                 !httpSessions.has(existingParticipantWithFingerprint.id)))
           ) ||
-          requestedClientIdCanRejoin,
+          requestedClientIdCanRejoin ||
+          requestedClientIdMatchesFingerprint,
       });
 
       if (!tokenAllowed) {

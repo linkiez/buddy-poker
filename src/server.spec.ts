@@ -101,6 +101,41 @@ describe('HTTP poker server contract', () => {
     });
     expect(recovered.response.status).toBe(200);
     expect(recovered.body['clientId']).toBe(participantId);
+
+    const mismatchedFingerprint = await postAction({
+      type: 'join',
+      roomId,
+      name: 'Participant',
+      fingerprint: 'different-fingerprint',
+      clientId: participantId,
+    });
+
+    expect(mismatchedFingerprint.response.status).toBe(403);
+  });
+
+  it('allows HTTP reload recovery while the previous client session is still active', async () => {
+    const roomId = `active-session-recovery-${Date.now()}`;
+    const moderator = await postAction({ type: 'join', roomId, name: 'Moderator' });
+    const token = (moderator.body['message'] as { token: string }).token;
+    const participant = await postAction({
+      type: 'join',
+      roomId,
+      name: 'Participant',
+      token,
+      fingerprint: 'active-session-fingerprint',
+    });
+    const participantId = participant.body['clientId'] as string;
+
+    const recovered = await postAction({
+      type: 'join',
+      roomId,
+      name: 'Participant',
+      fingerprint: 'active-session-fingerprint',
+      clientId: participantId,
+    });
+
+    expect(recovered.response.status).toBe(200);
+    expect(recovered.body['clientId']).toBe(participantId);
   });
 
   it(

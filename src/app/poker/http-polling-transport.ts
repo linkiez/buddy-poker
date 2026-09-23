@@ -57,6 +57,12 @@ export class HttpPollingTransport implements Transport {
     if (session) {
       this.clientId = session.clientId;
       this.lastEventId = session.lastEventId;
+      if (session.fingerprint && this.lastJoin) {
+        this.lastJoin = {
+          ...this.lastJoin,
+          fingerprint: session.fingerprint,
+        };
+      }
       return;
     }
 
@@ -131,7 +137,15 @@ export class HttpPollingTransport implements Transport {
 
     try {
       // Send join action
-      const joined = await this.sendAction({ type: 'join', roomId, name, ...(token ? { token } : {}), ...(fingerprint ? { fingerprint } : {}), ...(this.clientId ? { clientId: this.clientId } : {}) });
+      const joinFingerprint = this.lastJoin?.fingerprint;
+      const joined = await this.sendAction({
+        type: 'join',
+        roomId,
+        name,
+        ...(token ? { token } : {}),
+        ...(joinFingerprint ? { fingerprint: joinFingerprint } : {}),
+        ...(this.clientId ? { clientId: this.clientId } : {}),
+      });
       if (!joined) {
         if (this._status !== 'rejoin-required') {
           this.setStatus('unavailable');
