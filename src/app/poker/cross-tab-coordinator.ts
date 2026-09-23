@@ -90,6 +90,8 @@ export class CrossTabCoordinator {
   private leaderId: string | null = null;
   private leaderSeenAt = 0;
   private cursor = 0;
+  private latestState: PokerRoomViewState | null = null;
+  private latestStatus: TransportStatus | null = null;
 
   constructor(roomId: string, options: CrossTabCoordinatorOptions = {}) {
     this.roomId = normalizedRoomId(roomId);
@@ -206,6 +208,7 @@ export class CrossTabCoordinator {
       return false;
     }
 
+    this.latestState = state;
     this.broadcast({ type: 'state', roomId: this.roomId, leaderId: this.tabId, state });
     return true;
   }
@@ -216,6 +219,7 @@ export class CrossTabCoordinator {
       return false;
     }
 
+    this.latestStatus = status;
     this.broadcast({ type: 'status', roomId: this.roomId, leaderId: this.tabId, status });
     return true;
   }
@@ -339,6 +343,12 @@ export class CrossTabCoordinator {
       this.acceptLeader(message.leaderId, message.sentAt);
       if (message.type === 'leader-announce' && this.leader) {
         this.broadcastHeartbeat();
+        if (this.latestStatus) {
+          this.publishStatus(this.latestStatus);
+        }
+        if (this.latestState) {
+          this.publishState(this.latestState);
+        }
       }
       if (message.type === 'leader-heartbeat') {
         this.cursor = message.cursor;

@@ -92,6 +92,34 @@ describe('CrossTabCoordinator', () => {
     third.stop();
   });
 
+  it('replays the latest state when a new follower joins', () => {
+    const followerState = vi.fn();
+    const leader = new CrossTabCoordinator('room-1', createOptions({ tabId: 'a' }));
+
+    leader.start();
+    leader.publishState({
+      roomId: 'room-1',
+      ownerId: 'owner-1',
+      reveal: false,
+      participants: [],
+    });
+
+    const follower = new CrossTabCoordinator(
+      'room-1',
+      createOptions({ tabId: 'b', onState: followerState }),
+    );
+    follower.start();
+
+    expect(followerState).toHaveBeenCalledWith({
+      roomId: 'room-1',
+      ownerId: 'owner-1',
+      reveal: false,
+      participants: [],
+    });
+    leader.stop();
+    follower.stop();
+  });
+
   it('expires a silent leader and allows a follower to take over', () => {
     vi.useFakeTimers();
     const leader = new CrossTabCoordinator('room-1', createOptions({ tabId: 'a' }));
