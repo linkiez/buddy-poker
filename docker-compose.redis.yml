@@ -1,5 +1,6 @@
 services:
   buddy-poker:
+    restart: on-failure
     build: .
     ports:
       - "4000:4000"
@@ -14,6 +15,7 @@ services:
       - redis
 
   redis:
+    restart: on-failure
     image: redis:7-alpine
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     # Para habilitar senha, descomente:

@@ -2,6 +2,7 @@ version: '3.8'
 
 services:
   app:
+    restart: on-failure
     build: .
     ports:
       - "4000:4000"
@@ -27,7 +28,7 @@ services:
     volumes:
       - ./coturn/turnserver.conf:/etc/coturn/turnserver.conf:ro
       - ./coturn/certs:/etc/coturn/certs:ro
-    restart: unless-stopped
+    restart: on-failure
     command: ["-c", "/etc/coturn/turnserver.conf", "-v"]
     networks:
       - buddy-poker-network

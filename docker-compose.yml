@@ -1,14 +1,14 @@
 services:
   main:
+    restart: always
 #    image: ghcr.io/linkiez/buddy-poker:1.6.0
     build: .
     ports:
-      - "4000:4000"
+    - "4000:4000"
     env_file:
-      - .env
-    restart: always
+    - /etc/infisical-agent/secrets/buddy-poker.env
     networks:
-      - NW_JCMMETAIS
+    - NW_JCMMETAIS
     deploy:
       resources:
         limits:
@@ -17,6 +17,12 @@ services:
         reservations:
           cpus: '0.5'
           memory: 512M
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4000/', r => process.exit(r.statusCode < 500 ? 0 : 1)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
 networks:
   NW_JCMMETAIS:

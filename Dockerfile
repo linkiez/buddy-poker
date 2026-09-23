@@ -4,7 +4,7 @@ FROM node:20-bookworm-slim AS build
 WORKDIR /app
 
 # Enable Corepack so Yarn version from packageManager field is used
-RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 COPY package.json yarn.lock .yarnrc.yml ./
 RUN yarn install --immutable

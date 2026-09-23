@@ -1,5 +1,6 @@
 services:
   buddy-poker:
+    restart: on-failure
     build: .
     environment:
       NODE_ENV: production
@@ -8,6 +9,7 @@ services:
       - "4000"
 
   nginx:
+    restart: on-failure
     image: nginx:1.27-alpine
     depends_on:
       - buddy-poker
