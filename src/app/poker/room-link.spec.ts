@@ -24,6 +24,7 @@ describe('parseRoomInput', () => {
     });
 
     it('rejects room names with unsupported characters', () => {
+      expect(isValidRoomInput('   ')).toBe(false);
       expect(isValidRoomInput('sala legal')).toBe(false);
       expect(isValidRoomInput('/room/sala_legal')).toBe(false);
       expect(isValidRoomInput('https://example.com/not-room')).toBe(false);
