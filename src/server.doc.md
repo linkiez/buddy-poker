@@ -108,4 +108,5 @@ sequenceDiagram
 - Histórico de rodadas via [src/round-history.ts](round-history.ts).
 - Persistência (interface) via [src/room-persistence.ts](room-persistence.ts).
 - Persistência opcional Redis via [src/redis-room-persistence.ts](redis-room-persistence.ts) (habilita com `REDIS_URL`).
+- Desconexão: o participante continua na sala (`online: false` no estado) por 20 minutos (`DISCONNECT_TIMEOUT_MS`, ver [src/disconnect-timeout.ts](disconnect-timeout.ts)); reconectar dentro do prazo restaura lugar e voto. O cliente reconecta sozinho (backoff, e retoma ao voltar a aba/rede).
 - Integra com o front-end via protocolo JSON simples (sem autenticação).

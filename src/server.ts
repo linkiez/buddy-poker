@@ -25,6 +25,7 @@ import {
   restoreReservedOwner,
   type OwnerReservation,
 } from './owner-reservation';
+import { resolveDisconnectTimeoutMs } from './disconnect-timeout';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
 
@@ -63,7 +64,8 @@ type PokerConnectionState = {
 
 const rooms = new Map<string, PokerRoomState>();
 const socketAlive = new WeakMap<WebSocket, boolean>();
-const participantSessionTtlMs = 5 * 60 * 1000;
+const disconnectTimeoutMs = resolveDisconnectTimeoutMs(process.env['DISCONNECT_TIMEOUT_MS']);
+const participantSessionTtlMs = disconnectTimeoutMs;
 
 const roomTtlSeconds = (() => {
   const raw = process.env['ROOM_TTL_SECONDS'];
@@ -82,12 +84,12 @@ const roomTtlSeconds = (() => {
 const ownerReservationTtlMs = (() => {
   const raw = process.env['OWNER_RESERVATION_TTL_MS'];
   if (!raw) {
-    return 30_000;
+    return disconnectTimeoutMs;
   }
 
   const parsed = Number(raw);
   if (!Number.isFinite(parsed) || parsed < 0) {
-    return 30_000;
+    return disconnectTimeoutMs;
   }
 
   return Math.floor(parsed);
@@ -250,6 +252,7 @@ function broadcastRoomState(room: PokerRoomState): void {
     id: p.id,
     name: p.name,
     hasVoted: p.vote !== null,
+    online: room.sockets.has(p.id) || httpSessions.has(p.id),
     vote: room.reveal ? p.vote : null,
   }));
 
@@ -289,6 +292,26 @@ function removeClientFromRoom(room: PokerRoomState, clientId: string): void {
     return;
   }
 
+  persistRoom(room);
+  broadcastRoomState(room);
+  broadcastRoomStateHttp(room);
+}
+
+/**
+ * Keeps a participant that lost their connection in the room until the disconnect
+ * timeout elapses, so reconnecting restores the same seat and vote. The moderator
+ * keeps the existing reservation flow.
+ */
+function markClientDisconnected(room: PokerRoomState, clientId: string): void {
+  const participant = room.participants.get(clientId);
+  if (!participant || room.ownerId === clientId) {
+    removeClientFromRoom(room, clientId);
+    return;
+  }
+
+  room.sockets.delete(clientId);
+  room.webrtcPeers.delete(clientId);
+  touchParticipant(participant);
   persistRoom(room);
   broadcastRoomState(room);
   broadcastRoomStateHttp(room);
@@ -829,6 +852,7 @@ function broadcastRoomStateHttp(room: PokerRoomState): void {
     id: p.id,
     name: p.name,
     hasVoted: p.vote !== null,
+    online: room.sockets.has(p.id) || httpSessions.has(p.id),
     vote: room.reveal ? p.vote : null,
   }));
 
@@ -849,7 +873,7 @@ function broadcastRoomStateHttp(room: PokerRoomState): void {
 }
 
 // Clean up old HTTP sessions periodically
-const httpSessionTtlMs = 5 * 60 * 1000; // 5 minutes
+const httpSessionTtlMs = disconnectTimeoutMs;
 const httpCleanupIntervalMs = 60_000; // 1 minute
 const httpCleanupTimer = setInterval(() => {
   const now = Date.now();
@@ -862,9 +886,11 @@ const httpCleanupTimer = setInterval(() => {
 
   for (const [roomId, room] of rooms.entries()) {
     syncOwnerReservation(room, now);
+    let expiredParticipants = 0;
     for (const [clientId, participant] of room.participants.entries()) {
       if ((participant.expiresAt ?? now) <= now && !room.sockets.has(clientId) && !httpSessions.has(clientId)) {
         room.participants.delete(clientId);
+        expiredParticipants += 1;
       }
     }
     if (room.participants.size === 0 && !room.ownerReservation) {
@@ -872,6 +898,10 @@ const httpCleanupTimer = setInterval(() => {
       void roomPersistence.delete(roomId).catch(() => undefined);
     } else {
       persistRoom(room);
+      if (expiredParticipants > 0) {
+        broadcastRoomState(room);
+        broadcastRoomStateHttp(room);
+      }
     }
   }
 }, httpCleanupIntervalMs);
@@ -1436,7 +1466,7 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
       socketAlive.delete(socket);
       if (state.currentRoom && state.clientId) {
         removeClientFromWebRtcPeers(state.currentRoom, state.clientId);
-        removeClientFromRoom(state.currentRoom, state.clientId);
+        markClientDisconnected(state.currentRoom, state.clientId);
       }
     });
   });

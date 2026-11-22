@@ -75,6 +75,7 @@ Variáveis de ambiente relevantes:
 - `REDIS_URL`: URL de conexão (ex.: `redis://redis:6379`).
 - `REDIS_PASSWORD` (opcional): senha do Redis, quando aplicável.
 - `ROOM_TTL_SECONDS`: TTL padrão das chaves da sala (default: `86400`).
+- `DISCONNECT_TIMEOUT_MS`: quanto tempo um participante desconectado mantém lugar e voto na sala (default: `1200000`, 20 minutos). Também define a reserva do moderador e a inatividade da sessão HTTP; `OWNER_RESERVATION_TTL_MS` ainda sobrescreve só a reserva.
 - `REDIS_KEY_PREFIX`: prefixo da chave (default: `buddy-poker:room:`).
 
 ## Dependências e integrações

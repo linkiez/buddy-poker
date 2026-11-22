@@ -82,6 +82,7 @@
           <span class="p-name">
             {{ p.name }}
             <p-tag *ngIf="p.id === state()?.ownerId" value="moderador" severity="info" [rounded]="true" />
+            <p-tag *ngIf="p.online === false" value="offline" severity="secondary" [rounded]="true" />
           </span>
           <span class="vote-flip" [class.revealed]="!!state()?.reveal">
             <span class="vote-flip-inner">

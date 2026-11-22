@@ -4,6 +4,8 @@ export type PokerParticipantView = {
   id: string;
   name: string;
   hasVoted: boolean;
+  /** False while the participant is disconnected but still holds their seat. */
+  online?: boolean;
   vote: string | null;
 };
 
