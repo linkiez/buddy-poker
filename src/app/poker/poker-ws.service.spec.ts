@@ -1865,7 +1865,7 @@ describe('PokerWsService', () => {
     const service = TestBed.inject(PokerWsService);
     await service.connect('room-1', 'Dev Ninja');
     MockWebSocket.instances[MockWebSocket.instances.length - 1].close();
-    (service as any).coordinator = { isLeader: () => false, stop: vi.fn() };
+    vi.spyOn((service as any).coordinator, isLeader).mockReturnValue(false);
     const socketsBefore = MockWebSocket.instances.length;
 
     globalThis.dispatchEvent(new Event('online'));
