@@ -401,9 +401,12 @@ test.describe('P2P WebRTC - Peer Disconnection', () => {
     // Bob disconnects
     await bobContext.close();
 
-    // Remaining peers should see 2 participants
-    await waitForParticipantCount(alicePage, 2);
-    await waitForParticipantCount(charliePage, 2);
+    // Bob keeps his seat, marked offline, until the disconnect timeout elapses
+    for (const page of [alicePage, charliePage]) {
+      await expect(
+        page.locator('.participants li', { hasText: 'Bob' }).getByText('offline'),
+      ).toBeVisible({ timeout: 15_000 });
+    }
 
     // Verify voting still works
     await alicePage.getByRole('button', { name: '5' }).click();
