@@ -1,3 +1,11 @@
+# [1.9.0](https://github.com/linkiez/buddy-poker/compare/v1.8.0...v1.9.0) (2026-11-22)
+
+
+### Features
+
+* manter participante desconectado por 20 minutos ([9b0cde1](https://github.com/linkiez/buddy-poker/commit/9b0cde10ac703d3975c1888b273249ebbd709ed6))
+* reconectar automaticamente ao voltar a aba ou a rede ([b125609](https://github.com/linkiez/buddy-poker/commit/b125609f12b230dba5a098090e01a7560e2771cf))
+
 # [1.8.0](https://github.com/linkiez/buddy-poker/compare/v1.7.1...v1.8.0) (2026-09-23)
 
 
