@@ -619,17 +619,17 @@ describe('PokerWsService', () => {
     await service.connect('room-1', 'Dev Ninja');
     expect(mode).toBe('websocket');
 
-    // Simulate WebSocket failing by closing 3 times
-    for (let i = 0; i < 3; i++) {
+    // Simulate WebSocket failing on every reconnect attempt (10 before falling back)
+    for (let i = 0; i < 10; i++) {
       const ws = MockWebSocket.instances[i];
       ws.close();
-      if (i < 2) {
-        vi.advanceTimersByTime(Math.pow(2, i) * 500 + 200);
+      if (i < 9) {
+        vi.advanceTimersByTime(Math.min(Math.pow(2, i) * 500, 10_000) + 1_000);
       }
     }
 
     // Now the WebSocket should have failed
-    expect(MockWebSocket.instances.length).toBe(3);
+    expect(MockWebSocket.instances.length).toBe(10);
 
     // Check if the transport has hasConnectionFailed
     const transport = (service as any).transport;
@@ -1763,5 +1763,35 @@ describe('PokerWsService', () => {
     (service as any).handleFollowerAction({ type: 'reset', roomId: 'room-1', actionId: 'action-4' });
 
     expect(send).not.toHaveBeenCalled();
+  });
+
+  it('should reconnect immediately when the browser comes back online while disconnected', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    const socketsBefore = MockWebSocket.instances.length;
+    MockWebSocket.instances[socketsBefore - 1].close();
+
+    globalThis.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBeGreaterThan(socketsBefore);
+  });
+
+  it('should not restart a healthy connection when the browser reports online', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    MockWebSocket.instances[MockWebSocket.instances.length - 1].open();
+    const socketsBefore = MockWebSocket.instances.length;
+
+    globalThis.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBe(socketsBefore);
   });
 });

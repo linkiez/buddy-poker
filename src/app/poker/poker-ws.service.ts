@@ -22,6 +22,9 @@ type PokerWsConnectionStatus =
   | 'unavailable'
   | 'rejoin-required';
 
+/** WebSocket reconnect attempts before falling back to HTTP polling (about one minute of backoff). */
+const WS_RECONNECT_MAX_ATTEMPTS = 10;
+
 @Injectable({
   providedIn: 'root',
 })
@@ -38,6 +41,7 @@ export class PokerWsService {
 
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private resumeListenersRegistered = false;
   private wsRetryIntervalMs = 60_000; // Try to return to better transport every 60 seconds
 
   private readonly clientIdSubject = new BehaviorSubject<string | null>(null);
@@ -94,6 +98,7 @@ export class PokerWsService {
     this.roomId = roomId;
     this.lastJoin = { roomId, name, ...(token ? { token } : {}), fingerprint };
     this.clearWsRetryTimeout();
+    this.registerResumeListeners();
     this.startCrossTabCoordination(roomId);
 
     if (!this.coordinator?.isLeader()) {
@@ -334,7 +339,7 @@ export class PokerWsService {
     const config = this.getTransportConfig();
     this.transport = new WebSocketTransport(this.createTransportHandlers(), {
       ...config,
-      reconnectMaxAttempts: 3, // Limit attempts before fallback
+      reconnectMaxAttempts: WS_RECONNECT_MAX_ATTEMPTS,
     });
     this.currentMode = 'websocket';
     this.modeSubject.next('websocket');
@@ -457,6 +462,31 @@ export class PokerWsService {
       window.RTCSessionDescription &&
       window.RTCIceCandidate
     );
+  }
+
+  private registerResumeListeners(): void {
+    if (this.resumeListenersRegistered || typeof window === 'undefined') {
+      return;
+    }
+
+    this.resumeListenersRegistered = true;
+    window.addEventListener('online', () => this.resumeIfDisconnected());
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        this.resumeIfDisconnected();
+      }
+    });
+  }
+
+  /** Reconnects right away when the tab or network returns after the connection was lost. */
+  private resumeIfDisconnected(): void {
+    const status = this.transport?.status;
+    if (!this.lastJoin || status === 'connected' || status === 'connecting' || !this.coordinator?.isLeader()) {
+      return;
+    }
+
+    this.clearWsRetryTimeout();
+    this.tryBestTransport();
   }
 
   private clearWsRetryTimeout(): void {
