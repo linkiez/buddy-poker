@@ -1794,4 +1794,99 @@ describe('PokerWsService', () => {
 
     expect(MockWebSocket.instances.length).toBe(socketsBefore);
   });
+
+  it('should reconnect when the tab becomes visible while disconnected', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    const socketsBefore = MockWebSocket.instances.length;
+    MockWebSocket.instances[socketsBefore - 1].close();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(MockWebSocket.instances.length).toBeGreaterThan(socketsBefore);
+  });
+
+  it('should ignore visibility changes while the tab is hidden', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    const socketsBefore = MockWebSocket.instances.length;
+    MockWebSocket.instances[socketsBefore - 1].close();
+
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+
+    expect(MockWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it('should not interrupt a connection attempt that is still in progress', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    const socketsBefore = MockWebSocket.instances.length;
+
+    globalThis.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it('should not reconnect after the user left the room', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    MockWebSocket.instances[MockWebSocket.instances.length - 1].close();
+    service.disconnect();
+    const socketsBefore = MockWebSocket.instances.length;
+
+    globalThis.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it('should not reconnect from a follower tab', async () => {
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    MockWebSocket.instances[MockWebSocket.instances.length - 1].close();
+    (service as any).coordinator = { isLeader: () => false, stop: vi.fn() };
+    const socketsBefore = MockWebSocket.instances.length;
+
+    globalThis.dispatchEvent(new Event('online'));
+
+    expect(MockWebSocket.instances.length).toBe(socketsBefore);
+  });
+
+  it('should register the resume listeners only once and remove them on destroy', async () => {
+    const addSpy = vi.spyOn(globalThis, 'addEventListener');
+    const removeSpy = vi.spyOn(globalThis, 'removeEventListener');
+    TestBed.configureTestingModule({
+      providers: [{ provide: PLATFORM_ID, useValue: 'browser' }],
+    });
+
+    const service = TestBed.inject(PokerWsService);
+    await service.connect('room-1', 'Dev Ninja');
+    await service.connect('room-1', 'Dev Ninja');
+    service.ngOnDestroy();
+    service.ngOnDestroy();
+
+    expect(addSpy.mock.calls.filter(([type]) => type === 'online')).toHaveLength(1);
+    expect(removeSpy.mock.calls.filter(([type]) => type === 'online')).toHaveLength(1);
+  });
 });

@@ -1,5 +1,5 @@
 import { isPlatformBrowser } from '@angular/common';
-import { Injectable, PLATFORM_ID, inject } from '@angular/core';
+import { Injectable, OnDestroy, PLATFORM_ID, inject } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 import { getBrowserFingerprint } from './browser-fingerprint';
 import { isHttpOnlyEnabled } from './browser-session';
@@ -28,7 +28,7 @@ const WS_RECONNECT_MAX_ATTEMPTS = 10;
 @Injectable({
   providedIn: 'root',
 })
-export class PokerWsService {
+export class PokerWsService implements OnDestroy {
   private readonly platformId = inject(PLATFORM_ID);
 
   private transport: Transport | null = null;
@@ -42,6 +42,12 @@ export class PokerWsService {
   private lastJoin: { roomId: string; name: string; token?: string; fingerprint?: string } | null = null;
   private wsRetryTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private resumeListenersRegistered = false;
+  private readonly handleOnline = (): void => this.resumeIfDisconnected();
+  private readonly handleVisibilityChange = (): void => {
+    if (document.visibilityState === 'visible') {
+      this.resumeIfDisconnected();
+    }
+  };
   private wsRetryIntervalMs = 60_000; // Try to return to better transport every 60 seconds
 
   private readonly clientIdSubject = new BehaviorSubject<string | null>(null);
@@ -465,17 +471,23 @@ export class PokerWsService {
   }
 
   private registerResumeListeners(): void {
-    if (this.resumeListenersRegistered || typeof window === 'undefined') {
+    if (this.resumeListenersRegistered) {
       return;
     }
 
     this.resumeListenersRegistered = true;
-    window.addEventListener('online', () => this.resumeIfDisconnected());
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') {
-        this.resumeIfDisconnected();
-      }
-    });
+    window.addEventListener('online', this.handleOnline);
+    document.addEventListener('visibilitychange', this.handleVisibilityChange);
+  }
+
+  ngOnDestroy(): void {
+    if (!this.resumeListenersRegistered) {
+      return;
+    }
+
+    this.resumeListenersRegistered = false;
+    window.removeEventListener('online', this.handleOnline);
+    document.removeEventListener('visibilitychange', this.handleVisibilityChange);
   }
 
   /** Reconnects right away when the tab or network returns after the connection was lost. */
